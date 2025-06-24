@@ -679,6 +679,9 @@ extern "C"
 	SK_C_API void sk_canvas_draw_rect(sk_canvas_t *canvas, const sk_rect_t *crect, const sk_paint_t *cpaint);
 	SK_C_API void sk_canvas_draw_round_rect(sk_canvas_t *canvas, const sk_rect_t *crect, float rx, float ry, const sk_paint_t *cpaint);
 	SK_C_API void sk_canvas_draw_simple_text(sk_canvas_t *canvas, const void *text, size_t byte_length, sk_text_encoding_t encoding, float x, float y, const sk_font_t *cfont, const sk_paint_t *cpaint);
+	
+	SK_C_API void sk_canvas_draw_string(sk_canvas_t *canvas, const char str[], float x, float y, const sk_font_t *cfont, const sk_paint_t *cpaint);
+
 	SK_C_API void sk_canvas_draw_text_blob(sk_canvas_t *canvas, sk_text_blob_t *text, float x, float y, const sk_paint_t *paint);
 	SK_C_API bool sk_canvas_get_local_clip_bounds(sk_canvas_t *canvas, sk_rect_t *cbounds);
 	SK_C_API int sk_canvas_get_save_count(sk_canvas_t *canvas);
@@ -955,6 +958,7 @@ extern "C"
 	SK_C_API void sk_textblob_get_bounds(const sk_text_blob_t *blob, sk_rect_t *bounds);
 	SK_C_API int sk_textblob_get_intercepts(const sk_text_blob_t *blob, const float bounds[2], float intervals[], const sk_paint_t *paint);
 	SK_C_API sk_text_blob_t *sk_textblob_make_from_text(const void *text, size_t byteLength, const sk_font_t *font, sk_text_encoding_t encoding);
+	SK_C_API sk_text_blob_t *sk_textblob_make_from_string(const char *text, const sk_font_t *font, sk_text_encoding_t encoding);
 	SK_C_API void sk_textblob_unref(const sk_text_blob_t *blob);
 
 	// ===== Functions from include/core/SkTypeface.h =====
