@@ -528,6 +528,11 @@ void sk_canvas_draw_text_blob(sk_canvas_t *canvas, sk_text_blob_t *text, float x
 	reinterpret_cast<SkCanvas *>(canvas)->drawTextBlob(reinterpret_cast<SkTextBlob *>(text), x, y, *reinterpret_cast<const SkPaint *>(cpaint));
 }
 
+void sk_canvas_draw_string(sk_canvas_t *canvas, const char str[], float x, float y, const sk_font_t *cfont, const sk_paint_t *cpaint)
+{
+	reinterpret_cast<SkCanvas *>(canvas)->drawString(str, x, y, *reinterpret_cast<const SkFont *>(cfont), *reinterpret_cast<const SkPaint *>(cpaint));
+}
+
 bool sk_canvas_get_local_clip_bounds(sk_canvas_t *canvas, sk_rect_t *cbounds)
 {
 	return reinterpret_cast<SkCanvas *>(canvas)->getLocalClipBounds(reinterpret_cast<SkRect *>(cbounds));
@@ -1815,6 +1820,11 @@ int sk_textblob_get_intercepts(const sk_text_blob_t *blob, const float bounds[2]
 sk_text_blob_t *sk_textblob_make_from_text(const void *text, size_t byteLength, const sk_font_t *font, sk_text_encoding_t encoding)
 {
 	return reinterpret_cast<sk_text_blob_t *>(SkTextBlob::MakeFromText(text, byteLength, reinterpret_cast<const SkFont &>(*font), (SkTextEncoding)encoding).release());
+}
+
+sk_text_blob_t *sk_textblob_make_from_string(const char *text, const sk_font_t *font, sk_text_encoding_t encoding)
+{
+	return reinterpret_cast<sk_text_blob_t *>(SkTextBlob::MakeFromString(text, reinterpret_cast<const SkFont &>(*font), (SkTextEncoding)encoding).release());
 }
 
 void sk_textblob_unref(const sk_text_blob_t *blob)
