@@ -216,6 +216,21 @@ extern "C"
 		bool fProtected;
 	} gr_gl_framebufferinfo_t;
 
+	// ===== Types from include/gpu/ganesh/mtl/GrMtlTypes.h =====
+
+	typedef struct
+	{
+		const void *fTexture;
+	} gr_mtl_textureinfo_t;
+
+	// ===== Types from include/gpu/ganesh/mtl/GrMtlBackendContext.h =====
+
+	typedef struct
+	{
+		const void *fDevice;
+		const void *fQueue;
+	} gr_mtl_backendcontext_t;
+
 	// ===== Types from include/gpu/GrDirectContext.h =====
 
 	typedef struct gr_direct_context_t gr_direct_context_t;
@@ -650,8 +665,10 @@ extern "C"
 
 	// ===== Functions from include/gpu/GrBackendSurface.h =====
 	SK_C_API gr_backendrendertarget_t *gr_backendrendertarget_new_gl(int width, int height, int samples, int stencils, const gr_gl_framebufferinfo_t *glInfo);
+	SK_C_API gr_backendrendertarget_t *gr_backendrendertarget_new_metal(int width, int height, const gr_mtl_textureinfo_t *mtlInfo);
 	SK_C_API void gr_backendrendertarget_delete(gr_backendrendertarget_t *rendertarget);
 	SK_C_API gr_direct_context_t *gr_direct_context_make_gl(const gr_glinterface_t *glInterface);
+	SK_C_API gr_direct_context_t *gr_direct_context_make_metal(const gr_mtl_backendcontext_t *mtlBackendContext);
 
 	// ===== Functions from include/gpu/GrDirectContext.h =====
 	SK_C_API void gr_direct_context_abandon_context(gr_direct_context_t *context);
