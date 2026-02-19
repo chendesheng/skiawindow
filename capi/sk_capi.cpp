@@ -56,6 +56,16 @@
 #include "src/pdf/SkPDFDocumentPriv.h"
 
 #include "include/svg/SkSVGCanvas.h"
+#include "modules/skparagraph/include/DartTypes.h"
+#include "modules/skparagraph/include/FontCollection.h"
+#include "modules/skparagraph/include/Paragraph.h"
+#include "modules/skparagraph/include/ParagraphBuilder.h"
+#include "modules/skparagraph/include/ParagraphPainter.h"
+#include "modules/skparagraph/include/ParagraphStyle.h"
+#include "modules/skparagraph/include/TextStyle.h"
+#include "modules/skparagraph/src/Run.h"
+#include "modules/skparagraph/src/TextLine.h"
+#include "modules/skparagraph/src/TextWrapper.h"
 
 #if defined(SK_BUILD_FOR_MAC)
 #include "include/ports/SkFontMgr_mac_ct.h"
@@ -68,6 +78,9 @@
 #if defined(SK_BUILD_FOR_WIN)
 #include "include/ports/SkTypeface_win.h"
 #endif
+
+#include <cstdlib>
+#include <vector>
 
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
@@ -2497,6 +2510,1026 @@ bool sk_typeface_is_fixed_pitch(const sk_typeface_t *typeface) {
 
 void sk_typeface_unref(sk_typeface_t *typeface) {
   SkSafeUnref(reinterpret_cast<SkTypeface *>(typeface));
+}
+
+// ===== Functions from modules/skparagraph =====
+
+namespace {
+using skia::textlayout::Affinity;
+using skia::textlayout::Decoration;
+using skia::textlayout::FontCollection;
+using skia::textlayout::LineMetricStyle;
+using skia::textlayout::LineMetrics;
+using skia::textlayout::Paragraph;
+using skia::textlayout::ParagraphBuilder;
+using skia::textlayout::ParagraphPainter;
+using skia::textlayout::ParagraphStyle;
+using skia::textlayout::PlaceholderAlignment;
+using skia::textlayout::PlaceholderStyle;
+using skia::textlayout::PositionWithAffinity;
+using skia::textlayout::RectHeightStyle;
+using skia::textlayout::RectWidthStyle;
+using skia::textlayout::Run;
+using skia::textlayout::StrutStyle;
+using skia::textlayout::TextAlign;
+using skia::textlayout::TextBaseline;
+using skia::textlayout::TextBox;
+using skia::textlayout::TextDecoration;
+using skia::textlayout::TextDecorationMode;
+using skia::textlayout::TextDecorationStyle;
+using skia::textlayout::TextDirection;
+using skia::textlayout::TextHeightBehavior;
+using skia::textlayout::TextLine;
+using skia::textlayout::TextRange;
+using skia::textlayout::TextStyle;
+using skia::textlayout::TextWrapper;
+
+static TextDirection to_text_direction(sk_text_direction_t direction) {
+  return direction == Ltr ? TextDirection::kLtr : TextDirection::kRtl;
+}
+
+static sk_text_direction_t from_text_direction(TextDirection direction) {
+  return direction == TextDirection::kLtr ? Ltr : Rtl;
+}
+
+static Affinity to_affinity(sk_affinity affinity) {
+  return affinity == kUpstream ? Affinity::kUpstream : Affinity::kDownstream;
+}
+
+static sk_affinity from_affinity(Affinity affinity) {
+  return affinity == Affinity::kUpstream ? kUpstream : kDownstream;
+}
+
+static TextAlign to_text_align(sk_text_align_t align) {
+  return static_cast<TextAlign>(align);
+}
+
+static sk_text_align_t from_text_align(TextAlign align) {
+  return static_cast<sk_text_align_t>(align);
+}
+
+static TextHeightBehavior to_text_height_behavior(sk_text_height_behavior_t behavior) {
+  return static_cast<TextHeightBehavior>(behavior);
+}
+
+static sk_text_height_behavior_t from_text_height_behavior(TextHeightBehavior behavior) {
+  return static_cast<sk_text_height_behavior_t>(behavior);
+}
+
+static RectHeightStyle to_rect_height_style(sk_rect_height_style_t style) {
+  return static_cast<RectHeightStyle>(style);
+}
+
+static RectWidthStyle to_rect_width_style(sk_rect_width_style_t style) {
+  return static_cast<RectWidthStyle>(style);
+}
+
+static TextBaseline to_text_baseline(sk_text_baseline_t baseline) {
+  return baseline == kIdeographic ? TextBaseline::kIdeographic
+                                  : TextBaseline::kAlphabetic;
+}
+
+static sk_text_baseline_t from_text_baseline(TextBaseline baseline) {
+  return baseline == TextBaseline::kIdeographic ? kIdeographic : kAlphabetic;
+}
+
+static PlaceholderAlignment to_placeholder_alignment(sk_placeholder_alignment_t alignment) {
+  switch (alignment) {
+    case kAboveBaseline:
+      return PlaceholderAlignment::kAboveBaseline;
+    case kBelowBaseline:
+      return PlaceholderAlignment::kBelowBaseline;
+    case kLineCenter:
+      return PlaceholderAlignment::kMiddle;
+    case kBaseline:
+    default:
+      return PlaceholderAlignment::kBaseline;
+  }
+}
+
+static LineMetricStyle to_line_metric_style(sk_line_metric_style_t style) {
+  return style == kCSS ? LineMetricStyle::CSS : LineMetricStyle::Typographic;
+}
+
+static text_range_t from_text_range(TextRange range) {
+  text_range_t c_range;
+  c_range.start = range.start;
+  c_range.end = range.end;
+  return c_range;
+}
+
+static sk_position_with_affinity_t from_position_with_affinity(PositionWithAffinity position) {
+  sk_position_with_affinity_t result;
+  result.position = position.position;
+  result.affinity = from_affinity(position.affinity);
+  return result;
+}
+
+static sk_vector_t from_vector(const SkVector& vector) {
+  sk_vector_t result;
+  result.x = vector.fX;
+  result.y = vector.fY;
+  return result;
+}
+
+static std::vector<SkString> to_skstring_vector(const sk_string_t** values, size_t count) {
+  std::vector<SkString> result;
+  result.reserve(count);
+  for (size_t i = 0; i < count; ++i) {
+    result.push_back(*reinterpret_cast<const SkString*>(values[i]));
+  }
+  return result;
+}
+
+static sk_string_t** to_c_string_array(const std::vector<SkString>& values, size_t* count) {
+  *count = values.size();
+  if (values.empty()) {
+    return nullptr;
+  }
+  auto* result = static_cast<sk_string_t**>(std::malloc(values.size() * sizeof(sk_string_t*)));
+  for (size_t i = 0; i < values.size(); ++i) {
+    result[i] = reinterpret_cast<sk_string_t*>(new SkString(values[i]));
+  }
+  return result;
+}
+}  // namespace
+
+sk_paragraph_style_t *sk_paragraph_style_new() {
+  return reinterpret_cast<sk_paragraph_style_t *>(new ParagraphStyle());
+}
+
+void sk_paragraph_style_delete(sk_paragraph_style_t *style) {
+  delete reinterpret_cast<ParagraphStyle *>(style);
+}
+
+const sk_strut_style_t *sk_paragraph_style_get_strut_style(sk_paragraph_style_t *style) {
+  return reinterpret_cast<const sk_strut_style_t *>(
+      &reinterpret_cast<ParagraphStyle *>(style)->getStrutStyle());
+}
+
+void sk_paragraph_style_set_strut_style(sk_paragraph_style_t *style,
+                                        sk_strut_style_t *strutStyle) {
+  reinterpret_cast<ParagraphStyle *>(style)->setStrutStyle(
+      *reinterpret_cast<StrutStyle *>(strutStyle));
+}
+
+sk_text_direction_t sk_paragraph_style_get_text_direction(sk_paragraph_style_t *style) {
+  return from_text_direction(reinterpret_cast<ParagraphStyle *>(style)->getTextDirection());
+}
+
+void sk_paragraph_style_set_text_direction(sk_paragraph_style_t *style,
+                                           sk_text_direction_t direction) {
+  reinterpret_cast<ParagraphStyle *>(style)->setTextDirection(
+      to_text_direction(direction));
+}
+
+const sk_text_style_t *sk_paragraph_style_get_text_style(sk_paragraph_style_t *style) {
+  return reinterpret_cast<const sk_text_style_t *>(
+      &reinterpret_cast<ParagraphStyle *>(style)->getTextStyle());
+}
+
+void sk_paragraph_style_set_text_style(sk_paragraph_style_t *style,
+                                       sk_text_style_t *textStyle) {
+  reinterpret_cast<ParagraphStyle *>(style)->setTextStyle(
+      *reinterpret_cast<TextStyle *>(textStyle));
+}
+
+sk_text_align_t sk_paragraph_style_get_text_align(sk_paragraph_style_t *style) {
+  return from_text_align(reinterpret_cast<ParagraphStyle *>(style)->getTextAlign());
+}
+
+void sk_paragraph_style_set_text_align(sk_paragraph_style_t *style,
+                                       sk_text_align_t align) {
+  reinterpret_cast<ParagraphStyle *>(style)->setTextAlign(to_text_align(align));
+}
+
+size_t sk_paragraph_style_get_max_lines(sk_paragraph_style_t *style) {
+  return reinterpret_cast<ParagraphStyle *>(style)->getMaxLines();
+}
+
+void sk_paragraph_style_set_max_lines(sk_paragraph_style_t *style, size_t maxLines) {
+  reinterpret_cast<ParagraphStyle *>(style)->setMaxLines(maxLines);
+}
+
+float sk_paragraph_style_get_height(sk_paragraph_style_t *style) {
+  return reinterpret_cast<ParagraphStyle *>(style)->getHeight();
+}
+
+void sk_paragraph_style_set_height(sk_paragraph_style_t *style, float height) {
+  reinterpret_cast<ParagraphStyle *>(style)->setHeight(height);
+}
+
+sk_text_height_behavior_t
+sk_paragraph_style_get_text_height_behavior(sk_paragraph_style_t *style) {
+  return from_text_height_behavior(
+      reinterpret_cast<ParagraphStyle *>(style)->getTextHeightBehavior());
+}
+
+void sk_paragraph_style_set_text_height_behavior(sk_paragraph_style_t *style,
+                                                 sk_text_height_behavior_t v) {
+  reinterpret_cast<ParagraphStyle *>(style)->setTextHeightBehavior(
+      to_text_height_behavior(v));
+}
+
+bool sk_paragraph_style_hinting_is_on(sk_paragraph_style_t *style) {
+  return reinterpret_cast<ParagraphStyle *>(style)->hintingIsOn();
+}
+
+bool sk_paragraph_style_unlimited_lines(sk_paragraph_style_t *style) {
+  return reinterpret_cast<ParagraphStyle *>(style)->unlimited_lines();
+}
+
+void sk_paragraph_style_turn_hinting_off(sk_paragraph_style_t *style) {
+  reinterpret_cast<ParagraphStyle *>(style)->turnHintingOff();
+}
+
+bool sk_paragraph_style_get_replace_tab_characters(sk_paragraph_style_t *style) {
+  return reinterpret_cast<ParagraphStyle *>(style)->getReplaceTabCharacters();
+}
+
+void sk_paragraph_style_set_replace_tab_characters(sk_paragraph_style_t *style,
+                                                   bool replace) {
+  reinterpret_cast<ParagraphStyle *>(style)->setReplaceTabCharacters(replace);
+}
+
+bool sk_paragraph_style_get_apply_rounding_hack(sk_paragraph_style_t *style) {
+  return reinterpret_cast<ParagraphStyle *>(style)->getApplyRoundingHack();
+}
+
+void sk_paragraph_style_set_apply_rounding_hack(sk_paragraph_style_t *style, bool apply) {
+  reinterpret_cast<ParagraphStyle *>(style)->setApplyRoundingHack(apply);
+}
+
+const char *sk_paragraph_style_get_ellipsis(sk_paragraph_style_t *style) {
+  static thread_local SkString ellipsis;
+  ellipsis = reinterpret_cast<ParagraphStyle *>(style)->getEllipsis();
+  return ellipsis.c_str();
+}
+
+void sk_paragraph_style_set_ellipsis(sk_paragraph_style_t *style,
+                                     const char *ellipsis,
+                                     size_t length) {
+  reinterpret_cast<ParagraphStyle *>(style)->setEllipsis(SkString(ellipsis, length));
+}
+
+bool sk_paragraph_style_ellipsized(sk_paragraph_style_t *style) {
+  return reinterpret_cast<ParagraphStyle *>(style)->ellipsized();
+}
+
+sk_text_align_t sk_paragraph_style_effective_align(sk_paragraph_style_t *style) {
+  return from_text_align(reinterpret_cast<ParagraphStyle *>(style)->effective_align());
+}
+
+sk_strut_style_t *sk_strut_style_new() {
+  return reinterpret_cast<sk_strut_style_t *>(new StrutStyle());
+}
+
+sk_string_t **sk_strut_style_get_font_families(sk_strut_style_t *style, size_t *count) {
+  return to_c_string_array(reinterpret_cast<StrutStyle *>(style)->getFontFamilies(), count);
+}
+
+void sk_strut_style_set_font_families(sk_strut_style_t *style,
+                                      const sk_string_t **fontFamilies,
+                                      size_t count) {
+  reinterpret_cast<StrutStyle *>(style)->setFontFamilies(
+      to_skstring_vector(fontFamilies, count));
+}
+
+float sk_strut_style_get_font_size(sk_strut_style_t *style) {
+  return reinterpret_cast<StrutStyle *>(style)->getFontSize();
+}
+
+void sk_strut_style_set_font_size(sk_strut_style_t *style, float size) {
+  reinterpret_cast<StrutStyle *>(style)->setFontSize(size);
+}
+
+float sk_strut_style_get_height(sk_strut_style_t *style) {
+  return reinterpret_cast<StrutStyle *>(style)->getHeight();
+}
+
+void sk_strut_style_set_height(sk_strut_style_t *style, float height) {
+  reinterpret_cast<StrutStyle *>(style)->setHeight(height);
+}
+
+float sk_strut_style_get_leading(sk_strut_style_t *style) {
+  return reinterpret_cast<StrutStyle *>(style)->getLeading();
+}
+
+void sk_strut_style_set_leading(sk_strut_style_t *style, float leading) {
+  reinterpret_cast<StrutStyle *>(style)->setLeading(leading);
+}
+
+bool sk_strut_style_get_strut_enabled(sk_strut_style_t *style) {
+  return reinterpret_cast<StrutStyle *>(style)->getStrutEnabled();
+}
+
+void sk_strut_style_set_strut_enabled(sk_strut_style_t *style, bool enabled) {
+  reinterpret_cast<StrutStyle *>(style)->setStrutEnabled(enabled);
+}
+
+bool sk_strut_style_get_force_strut_height(sk_strut_style_t *style) {
+  return reinterpret_cast<StrutStyle *>(style)->getForceStrutHeight();
+}
+
+void sk_strut_style_set_force_strut_height(sk_strut_style_t *style, bool force) {
+  reinterpret_cast<StrutStyle *>(style)->setForceStrutHeight(force);
+}
+
+bool sk_strut_style_get_height_override(sk_strut_style_t *style) {
+  return reinterpret_cast<StrutStyle *>(style)->getHeightOverride();
+}
+
+void sk_strut_style_set_height_override(sk_strut_style_t *style, bool override) {
+  reinterpret_cast<StrutStyle *>(style)->setHeightOverride(override);
+}
+
+bool sk_strut_style_get_half_leading(sk_strut_style_t *style) {
+  return reinterpret_cast<StrutStyle *>(style)->getHalfLeading();
+}
+
+void sk_strut_style_set_half_leading(sk_strut_style_t *style, bool half) {
+  reinterpret_cast<StrutStyle *>(style)->setHalfLeading(half);
+}
+
+sk_font_collection_t *sk_font_collection_new() {
+  return reinterpret_cast<sk_font_collection_t *>(new FontCollection());
+}
+
+void sk_font_collection_ref(sk_font_collection_t *collection) {
+  reinterpret_cast<FontCollection *>(collection)->ref();
+}
+
+void sk_font_collection_unref(sk_font_collection_t *collection) {
+  reinterpret_cast<FontCollection *>(collection)->unref();
+}
+
+void sk_font_collection_set_default_font_manager(sk_font_collection_t *collection,
+                                                 sk_font_mgr_t *fontmgr) {
+  reinterpret_cast<FontCollection *>(collection)->setDefaultFontManager(
+      sk_ref_sp(reinterpret_cast<SkFontMgr *>(fontmgr)));
+}
+
+void sk_font_collection_set_default_font_manager2(sk_font_collection_t *collection,
+                                                  sk_font_mgr_t *fontmgr,
+                                                  sk_string_t **default_family_names) {
+  std::vector<SkString> families;
+  if (default_family_names != nullptr) {
+    for (size_t i = 0; default_family_names[i] != nullptr; ++i) {
+      families.push_back(*reinterpret_cast<SkString *>(default_family_names[i]));
+    }
+  }
+  reinterpret_cast<FontCollection *>(collection)->setDefaultFontManager(
+      sk_ref_sp(reinterpret_cast<SkFontMgr *>(fontmgr)), families);
+}
+
+sk_font_mgr_t *sk_font_collection_get_fallback_manager(sk_font_collection_t *collection) {
+  auto fontmgr = reinterpret_cast<FontCollection *>(collection)->getFallbackManager();
+  return reinterpret_cast<sk_font_mgr_t *>(fontmgr.release());
+}
+
+void sk_font_collection_set_asset_font_manager(sk_font_collection_t *collection,
+                                               sk_font_mgr_t *fontmgr) {
+  reinterpret_cast<FontCollection *>(collection)->setAssetFontManager(
+      sk_ref_sp(reinterpret_cast<SkFontMgr *>(fontmgr)));
+}
+
+void sk_font_collection_set_dynamic_font_manager(sk_font_collection_t *collection,
+                                                 sk_font_mgr_t *fontmgr) {
+  reinterpret_cast<FontCollection *>(collection)->setDynamicFontManager(
+      sk_ref_sp(reinterpret_cast<SkFontMgr *>(fontmgr)));
+}
+
+void sk_font_collection_set_test_font_manager(sk_font_collection_t *collection,
+                                              sk_font_mgr_t *fontmgr) {
+  reinterpret_cast<FontCollection *>(collection)->setTestFontManager(
+      sk_ref_sp(reinterpret_cast<SkFontMgr *>(fontmgr)));
+}
+
+int sk_font_collection_get_font_managers_count(sk_font_collection_t *collection) {
+  return static_cast<int>(
+      reinterpret_cast<FontCollection *>(collection)->getFontManagersCount());
+}
+
+void sk_font_collection_disable_font_fallback(sk_font_collection_t *collection) {
+  reinterpret_cast<FontCollection *>(collection)->disableFontFallback();
+}
+
+void sk_font_collection_enable_font_fallback(sk_font_collection_t *collection) {
+  reinterpret_cast<FontCollection *>(collection)->enableFontFallback();
+}
+
+int sk_font_collection_font_fallback_enabled(sk_font_collection_t *collection) {
+  return reinterpret_cast<FontCollection *>(collection)->fontFallbackEnabled() ? 1 : 0;
+}
+
+void sk_font_collection_clear_caches(sk_font_collection_t *collection) {
+  reinterpret_cast<FontCollection *>(collection)->clearCaches();
+}
+
+void sk_paragraph_layout(sk_paragraph_t *paragraph, float width) {
+  reinterpret_cast<Paragraph *>(paragraph)->layout(width);
+}
+
+void sk_paragraph_paint(sk_paragraph_t *paragraph,
+                        sk_canvas_t *canvas,
+                        float x,
+                        float y) {
+  reinterpret_cast<Paragraph *>(paragraph)->paint(reinterpret_cast<SkCanvas *>(canvas), x, y);
+}
+
+float sk_paragraph_get_max_width(sk_paragraph_t *paragraph) {
+  return reinterpret_cast<Paragraph *>(paragraph)->getMaxWidth();
+}
+
+float sk_paragraph_get_height(sk_paragraph_t *paragraph) {
+  return reinterpret_cast<Paragraph *>(paragraph)->getHeight();
+}
+
+float sk_paragraph_get_min_intrinsic_width(sk_paragraph_t *paragraph) {
+  return reinterpret_cast<Paragraph *>(paragraph)->getMinIntrinsicWidth();
+}
+
+float sk_paragraph_get_max_intrinsic_width(sk_paragraph_t *paragraph) {
+  return reinterpret_cast<Paragraph *>(paragraph)->getMaxIntrinsicWidth();
+}
+
+float sk_paragraph_get_alphabetic_baseline(sk_paragraph_t *paragraph) {
+  return reinterpret_cast<Paragraph *>(paragraph)->getAlphabeticBaseline();
+}
+
+float sk_paragraph_get_ideographic_baseline(sk_paragraph_t *paragraph) {
+  return reinterpret_cast<Paragraph *>(paragraph)->getIdeographicBaseline();
+}
+
+float sk_paragraph_get_longest_line(sk_paragraph_t *paragraph) {
+  return reinterpret_cast<Paragraph *>(paragraph)->getLongestLine();
+}
+
+bool sk_paragraph_did_exceed_max_lines(sk_paragraph_t *paragraph) {
+  return reinterpret_cast<Paragraph *>(paragraph)->didExceedMaxLines();
+}
+
+void sk_paragraph_mark_dirty(sk_paragraph_t *paragraph) {
+  reinterpret_cast<Paragraph *>(paragraph)->markDirty();
+}
+
+sk_position_with_affinity_t
+sk_paragraph_get_glyph_position_at_coordinate(sk_paragraph_t *paragraph,
+                                              float dx,
+                                              float dy) {
+  return from_position_with_affinity(
+      reinterpret_cast<Paragraph *>(paragraph)->getGlyphPositionAtCoordinate(dx, dy));
+}
+
+sk_text_box_vector_t
+sk_paragraph_get_rects_for_range(sk_paragraph_t *paragraph,
+                                 uint32_t start,
+                                 uint32_t end,
+                                 sk_rect_height_style_t rect_height_style,
+                                 sk_rect_width_style_t rect_width_style) {
+  auto boxes = reinterpret_cast<Paragraph *>(paragraph)->getRectsForRange(
+      start, end, to_rect_height_style(rect_height_style),
+      to_rect_width_style(rect_width_style));
+
+  sk_text_box_vector_t result{};
+  result.size = boxes.size();
+  result.capacity = boxes.size();
+  if (boxes.empty()) {
+    result.data = nullptr;
+    return result;
+  }
+
+  result.data = static_cast<sk_text_box_t *>(
+      std::malloc(boxes.size() * sizeof(sk_text_box_t)));
+  for (size_t i = 0; i < boxes.size(); ++i) {
+    result.data[i].rect = reinterpret_cast<const sk_rect_t &>(boxes[i].rect);
+    result.data[i].direction = from_text_direction(boxes[i].direction);
+  }
+  return result;
+}
+
+sk_paragraph_builder_t *sk_paragraph_builder_new(sk_paragraph_style_t *style,
+                                                 sk_font_collection_t *font_collection) {
+  auto builder = ParagraphBuilder::make(
+      *reinterpret_cast<ParagraphStyle *>(style),
+      sk_ref_sp(reinterpret_cast<FontCollection *>(font_collection)));
+  return reinterpret_cast<sk_paragraph_builder_t *>(builder.release());
+}
+
+void sk_paragraph_builder_delete(sk_paragraph_builder_t *builder) {
+  delete reinterpret_cast<ParagraphBuilder *>(builder);
+}
+
+void sk_paragraph_builder_push_style(sk_paragraph_builder_t *builder,
+                                     sk_text_style_t *style) {
+  reinterpret_cast<ParagraphBuilder *>(builder)->pushStyle(
+      *reinterpret_cast<TextStyle *>(style));
+}
+
+void sk_paragraph_builder_pop(sk_paragraph_builder_t *builder) {
+  reinterpret_cast<ParagraphBuilder *>(builder)->pop();
+}
+
+const sk_text_style_t *sk_paragraph_builder_peek_style(sk_paragraph_builder_t *builder) {
+  static thread_local TextStyle style;
+  style = reinterpret_cast<ParagraphBuilder *>(builder)->peekStyle();
+  return reinterpret_cast<const sk_text_style_t *>(&style);
+}
+
+void sk_paragraph_builder_add_text(sk_paragraph_builder_t *builder,
+                                   const char *text,
+                                   size_t text_length) {
+  reinterpret_cast<ParagraphBuilder *>(builder)->addText(text, text_length);
+}
+
+void sk_paragraph_builder_add_placeholder(sk_paragraph_builder_t *builder,
+                                          sk_paragraph_placeholder_style_t placeholderStyle) {
+  PlaceholderStyle style(placeholderStyle.fWidth, placeholderStyle.fHeight,
+                         to_placeholder_alignment(placeholderStyle.fAlignment),
+                         to_text_baseline(placeholderStyle.fBaseline),
+                         placeholderStyle.fBaselineOffset);
+  reinterpret_cast<ParagraphBuilder *>(builder)->addPlaceholder(style);
+}
+
+sk_paragraph_t *sk_paragraph_builder_build(sk_paragraph_builder_t *builder) {
+  auto paragraph = reinterpret_cast<ParagraphBuilder *>(builder)->Build();
+  return reinterpret_cast<sk_paragraph_t *>(paragraph.release());
+}
+
+sk_span_t sk_paragraph_builder_get_text(sk_paragraph_builder_t *builder) {
+  SkSpan<char> span = reinterpret_cast<ParagraphBuilder *>(builder)->getText();
+  sk_span_t result;
+  result.data = span.data();
+  result.size = span.size();
+  return result;
+}
+
+const sk_paragraph_style_t *
+sk_paragraph_builder_get_paragraph_style(sk_paragraph_builder_t *builder) {
+  return reinterpret_cast<const sk_paragraph_style_t *>(
+      &reinterpret_cast<ParagraphBuilder *>(builder)->getParagraphStyle());
+}
+
+void sk_paragraph_builder_reset(sk_paragraph_builder_t *builder) {
+  reinterpret_cast<ParagraphBuilder *>(builder)->Reset();
+}
+
+text_range_t sk_text_line_trimmed_text(sk_text_line_t *text_line) {
+  return from_text_range(reinterpret_cast<TextLine *>(text_line)->trimmedText());
+}
+
+text_range_t sk_text_with_new_lines(sk_text_line_t *text_line) {
+  return from_text_range(reinterpret_cast<TextLine *>(text_line)->textWithNewlines());
+}
+
+text_range_t sk_text_line_text(sk_text_line_t *text_line) {
+  return from_text_range(reinterpret_cast<TextLine *>(text_line)->text());
+}
+
+int sk_text_line_empty(sk_text_line_t *text_line) {
+  return reinterpret_cast<TextLine *>(text_line)->empty() ? 1 : 0;
+}
+
+text_range_t sk_text_line_clusters_with_spaces(sk_text_line_t *text_line) {
+  return from_text_range(reinterpret_cast<TextLine *>(text_line)->clustersWithSpaces());
+}
+
+float sk_text_line_spaces_width(sk_text_line_t *text_line) {
+  return reinterpret_cast<TextLine *>(text_line)->spacesWidth();
+}
+
+float sk_text_line_height(sk_text_line_t *text_line) {
+  return reinterpret_cast<TextLine *>(text_line)->height();
+}
+
+float sk_text_line_width(sk_text_line_t *text_line) {
+  return reinterpret_cast<TextLine *>(text_line)->width();
+}
+
+float sk_text_line_width_without_ellipsis(sk_text_line_t *text_line) {
+  return reinterpret_cast<TextLine *>(text_line)->widthWithoutEllipsis();
+}
+
+sk_vector_t sk_text_line_offset(sk_text_line_t *text_line) {
+  return from_vector(reinterpret_cast<TextLine *>(text_line)->offset());
+}
+
+float sk_text_line_alphabetic_baseline(sk_text_line_t *text_line) {
+  return reinterpret_cast<TextLine *>(text_line)->alphabeticBaseline();
+}
+
+void sk_text_line_format(sk_text_line_t *text_line, sk_text_align_t align, float max_width) {
+  reinterpret_cast<TextLine *>(text_line)->format(to_text_align(align), max_width);
+}
+
+void sk_text_line_paint(sk_text_line_t *text_line,
+                        sk_paragraph_painter_t *painter,
+                        float x,
+                        float y) {
+  reinterpret_cast<TextLine *>(text_line)->paint(
+      reinterpret_cast<ParagraphPainter *>(painter), x, y);
+}
+
+void sk_text_line_create_ellipsis(sk_text_line_t *text_line,
+                                  float max_width,
+                                  const sk_string_t *ellipsis,
+                                  int ltr) {
+  reinterpret_cast<TextLine *>(text_line)->createEllipsis(
+      max_width, *reinterpret_cast<const SkString *>(ellipsis), ltr != 0);
+}
+
+int sk_text_line_is_first_line(sk_text_line_t *text_line) {
+  return reinterpret_cast<TextLine *>(text_line)->isFirstLine() ? 1 : 0;
+}
+
+int sk_text_line_is_last_line(sk_text_line_t *text_line) {
+  return reinterpret_cast<TextLine *>(text_line)->isLastLine() ? 1 : 0;
+}
+
+sk_position_with_affinity_t *
+sk_text_line_get_glyph_position_at_coordinate(sk_text_line_t *text_line, float dx) {
+  static thread_local sk_position_with_affinity_t position;
+  position = from_position_with_affinity(
+      reinterpret_cast<TextLine *>(text_line)->getGlyphPositionAtCoordinate(dx));
+  return &position;
+}
+
+sk_line_metrics_t *sk_text_line_get_metrics(sk_text_line_t *text_line) {
+  static thread_local LineMetrics metrics;
+  metrics = reinterpret_cast<TextLine *>(text_line)->getMetrics();
+  return reinterpret_cast<sk_line_metrics_t *>(&metrics);
+}
+
+void sk_text_line_shift_vertically(sk_text_line_t *text_line, float shift) {
+  reinterpret_cast<TextLine *>(text_line)->shiftVertically(shift);
+}
+
+float sk_text_line_ideographic_baseline(sk_text_line_t *text_line) {
+  return reinterpret_cast<TextLine *>(text_line)->ideographicBaseline();
+}
+
+float sk_text_line_baseline(sk_text_line_t *text_line) {
+  return reinterpret_cast<TextLine *>(text_line)->baseline();
+}
+
+void sk_text_line_set_ascent_style(sk_text_line_t *text_line,
+                                   sk_line_metric_style_t style) {
+  reinterpret_cast<TextLine *>(text_line)->setAscentStyle(to_line_metric_style(style));
+}
+
+void sk_text_line_set_descent_style(sk_text_line_t *text_line,
+                                    sk_line_metric_style_t style) {
+  reinterpret_cast<TextLine *>(text_line)->setDescentStyle(to_line_metric_style(style));
+}
+
+int sk_text_line_ends_with_hard_line_break(sk_text_line_t *text_line) {
+  return reinterpret_cast<TextLine *>(text_line)->endsWithHardLineBreak() ? 1 : 0;
+}
+
+float sk_run_pos_x(sk_run_t *run, size_t index) {
+  return reinterpret_cast<Run *>(run)->posX(index);
+}
+
+float sk_run_pos_y(sk_run_t *run, size_t index) {
+  return reinterpret_cast<Run *>(run)->posY(index);
+}
+
+size_t sk_run_size(sk_run_t *run) {
+  return reinterpret_cast<Run *>(run)->size();
+}
+
+void sk_run_add_x(sk_run_t *run, size_t index, float shift) {
+  reinterpret_cast<Run *>(run)->addX(index, shift);
+}
+
+void sk_run_set_width(sk_run_t *run, float width) {
+  reinterpret_cast<Run *>(run)->setWidth(width);
+}
+
+void sk_run_set_height(sk_run_t *run, float height) {
+  reinterpret_cast<Run *>(run)->setHeight(height);
+}
+
+void sk_run_shift(sk_run_t *run, float shiftX, float shiftY) {
+  reinterpret_cast<Run *>(run)->shift(shiftX, shiftY);
+}
+
+sk_vector_t sk_run_advance(sk_run_t *run) {
+  return from_vector(reinterpret_cast<Run *>(run)->advance());
+}
+
+sk_vector_t sk_run_offset(sk_run_t *run) {
+  return from_vector(reinterpret_cast<Run *>(run)->offset());
+}
+
+float sk_run_ascent(sk_run_t *run) {
+  return reinterpret_cast<Run *>(run)->ascent();
+}
+
+float sk_run_descent(sk_run_t *run) {
+  return reinterpret_cast<Run *>(run)->descent();
+}
+
+float sk_run_leading(sk_run_t *run) {
+  return reinterpret_cast<Run *>(run)->leading();
+}
+
+float sk_run_correct_ascent(sk_run_t *run) {
+  return reinterpret_cast<Run *>(run)->correctAscent();
+}
+
+float sk_run_correct_descent(sk_run_t *run) {
+  return reinterpret_cast<Run *>(run)->correctDescent();
+}
+
+float sk_run_correct_leading(sk_run_t *run) {
+  return reinterpret_cast<Run *>(run)->correctLeading();
+}
+
+const sk_font_t *sk_run_font(sk_run_t *run) {
+  return reinterpret_cast<const sk_font_t *>(&reinterpret_cast<Run *>(run)->font());
+}
+
+int sk_run_left_to_right(sk_run_t *run) {
+  return reinterpret_cast<Run *>(run)->leftToRight() ? 1 : 0;
+}
+
+sk_text_direction_t sk_run_get_text_direction(sk_run_t *run) {
+  return from_text_direction(reinterpret_cast<Run *>(run)->getTextDirection());
+}
+
+size_t sk_run_index(sk_run_t *run) {
+  return reinterpret_cast<Run *>(run)->index();
+}
+
+float sk_run_height_multiplier(sk_run_t *run) {
+  return reinterpret_cast<Run *>(run)->heightMultiplier();
+}
+
+int sk_run_use_half_leading(sk_run_t *run) {
+  return reinterpret_cast<Run *>(run)->useHalfLeading() ? 1 : 0;
+}
+
+float sk_run_baseline_shift(sk_run_t *run) {
+  return reinterpret_cast<Run *>(run)->baselineShift();
+}
+
+float sk_run_position_x(sk_run_t *run, size_t pos) {
+  return reinterpret_cast<Run *>(run)->positionX(pos);
+}
+
+text_range_t sk_run_text_range(sk_run_t *run) {
+  return from_text_range(reinterpret_cast<Run *>(run)->textRange());
+}
+
+sk_text_wrapper_t *sk_text_wrapper_create() {
+  return reinterpret_cast<sk_text_wrapper_t *>(new TextWrapper());
+}
+
+float sk_text_wrapper_height(sk_text_wrapper_t *wrapper) {
+  return reinterpret_cast<TextWrapper *>(wrapper)->height();
+}
+
+float sk_text_wrapper_min_intrinsic_width(sk_text_wrapper_t *wrapper) {
+  return reinterpret_cast<TextWrapper *>(wrapper)->minIntrinsicWidth();
+}
+
+float sk_text_wrapper_max_intrinsic_width(sk_text_wrapper_t *wrapper) {
+  return reinterpret_cast<TextWrapper *>(wrapper)->maxIntrinsicWidth();
+}
+
+bool sk_text_wrapper_exceeded_max_lines(sk_text_wrapper_t *wrapper) {
+  return reinterpret_cast<TextWrapper *>(wrapper)->exceededMaxLines();
+}
+
+const sk_text_style_t *sk_text_style_create() {
+  return reinterpret_cast<const sk_text_style_t *>(new TextStyle());
+}
+
+sk_text_style_t *sk_text_style_clone_for_placeholder(sk_text_style_t *style) {
+  return reinterpret_cast<sk_text_style_t *>(
+      new TextStyle(reinterpret_cast<TextStyle *>(style)->cloneForPlaceholder()));
+}
+
+sk_color_t sk_text_style_get_color(sk_text_style_t *style) {
+  return reinterpret_cast<TextStyle *>(style)->getColor();
+}
+
+void sk_text_style_set_color(sk_text_style_t *style, sk_color_t color) {
+  reinterpret_cast<TextStyle *>(style)->setColor(color);
+}
+
+bool sk_text_style_has_foreground(sk_text_style_t *style) {
+  return reinterpret_cast<TextStyle *>(style)->hasForeground();
+}
+
+const sk_paint_t *sk_text_style_get_foreground(sk_text_style_t *style) {
+  static thread_local SkPaint paint;
+  paint = reinterpret_cast<TextStyle *>(style)->getForeground();
+  return reinterpret_cast<const sk_paint_t *>(&paint);
+}
+
+void sk_text_style_set_foreground_paint(sk_text_style_t *style, sk_paint_t *paint) {
+  reinterpret_cast<TextStyle *>(style)->setForegroundPaint(
+      *reinterpret_cast<SkPaint *>(paint));
+}
+
+bool sk_text_style_has_background(sk_text_style_t *style) {
+  return reinterpret_cast<TextStyle *>(style)->hasBackground();
+}
+
+const sk_paint_t *sk_text_style_get_background(sk_text_style_t *style) {
+  static thread_local SkPaint paint;
+  paint = reinterpret_cast<TextStyle *>(style)->getBackground();
+  return reinterpret_cast<const sk_paint_t *>(&paint);
+}
+
+void sk_text_style_set_background_paint(sk_text_style_t *style, sk_paint_t *paint) {
+  reinterpret_cast<TextStyle *>(style)->setBackgroundPaint(
+      *reinterpret_cast<SkPaint *>(paint));
+}
+
+void sk_text_style_clear_foreground_color(sk_text_style_t *style) {
+  reinterpret_cast<TextStyle *>(style)->clearForegroundColor();
+}
+
+void sk_text_style_clear_background_color(sk_text_style_t *style) {
+  reinterpret_cast<TextStyle *>(style)->clearBackgroundColor();
+}
+
+sk_decoration_t sk_text_style_get_decoration(sk_text_style_t *style) {
+  auto decoration = reinterpret_cast<TextStyle *>(style)->getDecoration();
+  sk_decoration_t c_decoration;
+  c_decoration.fType = static_cast<sk_text_decoration_t>(decoration.fType);
+  c_decoration.fMode = static_cast<sk_text_decoration_mode_t>(decoration.fMode);
+  c_decoration.fColor = decoration.fColor;
+  c_decoration.fStyle = static_cast<sk_text_decoration_style_t>(decoration.fStyle);
+  c_decoration.fThicknessMultiplier = decoration.fThicknessMultiplier;
+  return c_decoration;
+}
+
+sk_text_decoration_t sk_text_style_get_decoration_type(sk_text_style_t *style) {
+  return static_cast<sk_text_decoration_t>(
+      reinterpret_cast<TextStyle *>(style)->getDecorationType());
+}
+
+void sk_text_style_set_decoration_type(sk_text_style_t *style,
+                                       sk_text_decoration_t decoration) {
+  reinterpret_cast<TextStyle *>(style)->setDecoration(
+      static_cast<TextDecoration>(decoration));
+}
+
+sk_text_decoration_mode_t sk_text_style_get_decoration_mode(sk_text_style_t *style) {
+  return static_cast<sk_text_decoration_mode_t>(
+      reinterpret_cast<TextStyle *>(style)->getDecorationMode());
+}
+
+void sk_text_style_set_decoration_mode(sk_text_style_t *style,
+                                       sk_text_decoration_mode_t mode) {
+  reinterpret_cast<TextStyle *>(style)->setDecorationMode(
+      static_cast<TextDecorationMode>(mode));
+}
+
+sk_text_decoration_style_t sk_text_style_get_decoration_style(sk_text_style_t *style) {
+  return static_cast<sk_text_decoration_style_t>(
+      reinterpret_cast<TextStyle *>(style)->getDecorationStyle());
+}
+
+void sk_text_style_set_decoration_style(sk_text_style_t *style,
+                                        sk_text_decoration_style_t decoration_style) {
+  reinterpret_cast<TextStyle *>(style)->setDecorationStyle(
+      static_cast<TextDecorationStyle>(decoration_style));
+}
+
+sk_color_t sk_text_style_get_decoration_color(sk_text_style_t *style) {
+  return reinterpret_cast<TextStyle *>(style)->getDecorationColor();
+}
+
+void sk_text_style_set_decoration_color(sk_text_style_t *style, sk_color_t color) {
+  reinterpret_cast<TextStyle *>(style)->setDecorationColor(color);
+}
+
+float sk_text_style_get_decoration_thickness_multiplier(sk_text_style_t *style) {
+  return reinterpret_cast<TextStyle *>(style)->getDecorationThicknessMultiplier();
+}
+
+void sk_text_style_set_decoration_thickness_multiplier(sk_text_style_t *style,
+                                                       float multiplier) {
+  reinterpret_cast<TextStyle *>(style)->setDecorationThicknessMultiplier(multiplier);
+}
+
+float sk_text_style_get_font_size(sk_text_style_t *style) {
+  return reinterpret_cast<TextStyle *>(style)->getFontSize();
+}
+
+void sk_text_style_set_font_size(sk_text_style_t *style, float size) {
+  reinterpret_cast<TextStyle *>(style)->setFontSize(size);
+}
+
+const sk_fontstyle_t *sk_text_style_get_fontstyle(sk_text_style_t *style) {
+  static thread_local SkFontStyle font_style;
+  font_style = reinterpret_cast<TextStyle *>(style)->getFontStyle();
+  return reinterpret_cast<const sk_fontstyle_t *>(&font_style);
+}
+
+void sk_text_style_set_fontstyle(sk_text_style_t *style, sk_fontstyle_t *fontstyle) {
+  reinterpret_cast<TextStyle *>(style)->setFontStyle(
+      *reinterpret_cast<SkFontStyle *>(fontstyle));
+}
+
+sk_text_baseline_t sk_text_style_get_text_baseline(sk_text_style_t *style) {
+  return from_text_baseline(reinterpret_cast<TextStyle *>(style)->getTextBaseline());
+}
+
+void sk_text_style_set_text_baseline(sk_text_style_t *style, sk_text_baseline_t baseline) {
+  reinterpret_cast<TextStyle *>(style)->setTextBaseline(to_text_baseline(baseline));
+}
+
+float sk_text_style_get_baseline_shift(sk_text_style_t *style) {
+  return reinterpret_cast<TextStyle *>(style)->getBaselineShift();
+}
+
+void sk_text_style_set_baseline_shift(sk_text_style_t *style, float shift) {
+  reinterpret_cast<TextStyle *>(style)->setBaselineShift(shift);
+}
+
+float sk_text_style_get_height(sk_text_style_t *style) {
+  return reinterpret_cast<TextStyle *>(style)->getHeight();
+}
+
+void sk_text_style_set_height(sk_text_style_t *style, float height) {
+  reinterpret_cast<TextStyle *>(style)->setHeight(height);
+}
+
+bool sk_text_style_get_height_override(sk_text_style_t *style) {
+  return reinterpret_cast<TextStyle *>(style)->getHeightOverride();
+}
+
+void sk_text_style_set_height_override(sk_text_style_t *style, bool height_override) {
+  reinterpret_cast<TextStyle *>(style)->setHeightOverride(height_override);
+}
+
+bool sk_text_style_get_half_leading(sk_text_style_t *style) {
+  return reinterpret_cast<TextStyle *>(style)->getHalfLeading();
+}
+
+void sk_text_style_set_half_leading(sk_text_style_t *style, bool half_leading) {
+  reinterpret_cast<TextStyle *>(style)->setHalfLeading(half_leading);
+}
+
+float sk_text_style_get_letter_spacing(sk_text_style_t *style) {
+  return reinterpret_cast<TextStyle *>(style)->getLetterSpacing();
+}
+
+void sk_text_style_set_letter_spacing(sk_text_style_t *style, float letter_spacing) {
+  reinterpret_cast<TextStyle *>(style)->setLetterSpacing(letter_spacing);
+}
+
+float sk_text_style_get_word_spacing(sk_text_style_t *style) {
+  return reinterpret_cast<TextStyle *>(style)->getWordSpacing();
+}
+
+void sk_text_style_set_word_spacing(sk_text_style_t *style, float word_spacing) {
+  reinterpret_cast<TextStyle *>(style)->setWordSpacing(word_spacing);
+}
+
+bool sk_text_style_is_placeholder(sk_text_style_t *style) {
+  return reinterpret_cast<TextStyle *>(style)->isPlaceholder();
+}
+
+void sk_text_style_set_placeholder(sk_text_style_t *style) {
+  reinterpret_cast<TextStyle *>(style)->setPlaceholder();
+}
+
+sk_string_t **sk_text_style_get_font_families(sk_text_style_t *style, size_t *count) {
+  return to_c_string_array(reinterpret_cast<TextStyle *>(style)->getFontFamilies(), count);
+}
+
+void sk_text_style_set_font_families(sk_text_style_t *style,
+                                     const sk_string_t **fontFamilies,
+                                     size_t count) {
+  reinterpret_cast<TextStyle *>(style)->setFontFamilies(
+      to_skstring_vector(fontFamilies, count));
+}
+
+const sk_string_t *sk_text_style_get_locale(sk_text_style_t *style) {
+  return reinterpret_cast<const sk_string_t *>(
+      new SkString(reinterpret_cast<TextStyle *>(style)->getLocale()));
+}
+
+void sk_text_style_set_locale(sk_text_style_t *style, const sk_string_t *locale) {
+  reinterpret_cast<TextStyle *>(style)->setLocale(
+      *reinterpret_cast<const SkString *>(locale));
+}
+
+sk_typeface_t *sk_text_style_get_typeface(sk_text_style_t *style) {
+  auto typeface = reinterpret_cast<TextStyle *>(style)->refTypeface();
+  return reinterpret_cast<sk_typeface_t *>(typeface.release());
+}
+
+void sk_text_style_set_typeface(sk_text_style_t *style, sk_typeface_t *typeface) {
+  reinterpret_cast<TextStyle *>(style)->setTypeface(
+      sk_ref_sp(reinterpret_cast<SkTypeface *>(typeface)));
 }
 
 // ===== Functions from include/core/SkStream.h =====
