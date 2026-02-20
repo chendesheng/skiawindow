@@ -178,6 +178,17 @@ export const skLib = Deno.dlopen(libPath, {
     parameters: ["pointer", "pointer", "f32", "f32"],
     result: "void",
   },
+
+  // --- Color / HSV ---
+
+  sk_rgb_to_hsv: {
+    parameters: ["u8", "u8", "u8", "buffer"],
+    result: "void",
+  },
+  sk_hsv_to_color: {
+    parameters: ["u8", "buffer"],
+    result: "u32",
+  },
 });
 
 // ---------------------------------------------------------------------------
