@@ -2,10 +2,14 @@
 import PackageDescription
 import Foundation
 
-// Absolute path to the package root — used for paths to pre-built Skia libraries
-// that live outside SPM's normal source-tree search.
-let pkg      = URL(fileURLWithPath: #file).deletingLastPathComponent().path
+let pkg       = URL(fileURLWithPath: #file).deletingLastPathComponent().path
 let skiaBuild = "\(pkg)/skia/skia/skia/build"
+
+func nonSourceFiles(in dir: String, sourceExtensions: Set<String>) -> [String] {
+    (try? FileManager.default.contentsOfDirectory(atPath: "\(pkg)/\(dir)"))?.filter {
+        !sourceExtensions.contains(String(($0 as NSString).pathExtension).lowercased())
+    } ?? []
+}
 
 let package = Package(
     name: "cskia",
@@ -19,7 +23,7 @@ let package = Package(
         .target(
             name: "CSkia",
             path: "capi",
-            exclude: ["binding.ts"],
+            exclude: nonSourceFiles(in: "capi", sourceExtensions: ["c", "cpp", "h", "modulemap"]),
             sources: ["sk_capi.cpp"],
             publicHeadersPath: ".",
             cxxSettings: [
@@ -39,7 +43,7 @@ let package = Package(
                     "-L\(skiaBuild)",
                     "-lskparagraph", "-lskshaper", "-lskia",
                     "-lskunicode_icu", "-lskunicode_core",
-                    "-lharfbuzz", "-licu", "-licu_bidi", "-lskcms", "-lpng",
+                    "-lharfbuzz", "-licu", "-lskcms", "-lpng",
                     "-lc++",
                     "-Xlinker", "-undefined",
                     "-Xlinker", "dynamic_lookup",
@@ -51,7 +55,7 @@ let package = Package(
         .target(
             name: "Window",
             path: "window",
-            exclude: ["binding.ts"],
+            exclude: nonSourceFiles(in: "window", sourceExtensions: ["swift"]),
             linkerSettings: [
                 .linkedFramework("Cocoa"),
                 .linkedFramework("Metal"),
