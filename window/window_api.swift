@@ -2,11 +2,11 @@
  * window_api.swift — C API exports (@_cdecl) for the window module.
  *
  * Exposes:
+ *   app_run / app_quit / app_get_metal_device / app_get_metal_queue
  *   window_create / window_show / window_run / window_destroy
  *   window_set_on_mouse_down / window_set_on_mouse_up / window_set_on_mouse_move
  *   window_set_on_key_down / window_set_on_key_up
  *   window_set_on_window_close / window_set_on_window_resize / window_set_on_render
- *   window_get_metal_device / window_get_metal_queue
  *   window_get_next_drawable / drawable_get_texture / present_drawable
  *   window_get_scale
  *   window_set_title / window_set_width / window_set_height
@@ -23,8 +23,6 @@ import QuartzCore
 import Carbon.HIToolbox
 
 // MARK: - Constants
-
-private var appDidFinishLaunching = false
 
 private let MOD_CTRL: UInt32  = 1 << 0
 private let MOD_SHIFT: UInt32 = 1 << 1
@@ -173,7 +171,43 @@ private func decodeUtf8(_ bytes: UnsafePointer<UInt8>?, _ length: Int) -> String
     return String(decoding: buffer, as: UTF8.self)
 }
 
-// MARK: - Lifecycle
+// MARK: - Application lifecycle
+
+@_cdecl("app_run")
+public func appRun() {
+    NSApp.run()
+}
+
+@_cdecl("app_quit")
+public func appQuit() {
+    NSApp.stop(nil)
+    let event = NSEvent.otherEvent(
+        with: .applicationDefined,
+        location: .zero,
+        modifierFlags: [],
+        timestamp: 0,
+        windowNumber: 0,
+        context: nil,
+        subtype: 0,
+        data1: 0,
+        data2: 0
+    )
+    if let event { NSApp.postEvent(event, atStart: false) }
+}
+
+@_cdecl("app_get_metal_device")
+public func appGetMetalDevice() -> UnsafeMutableRawPointer? {
+    let dev = AppState.shared.metalDevice as AnyObject
+    return Unmanaged.passUnretained(dev).toOpaque()
+}
+
+@_cdecl("app_get_metal_queue")
+public func appGetMetalQueue() -> UnsafeMutableRawPointer? {
+    let queue = AppState.shared.commandQueue as AnyObject
+    return Unmanaged.passUnretained(queue).toOpaque()
+}
+
+// MARK: - Window lifecycle
 
 @_cdecl("window_create")
 public func windowCreate(
@@ -183,9 +217,7 @@ public func windowCreate(
     _ titleLen: Int
 ) -> UnsafeMutableRawPointer {
     let titleStr = decodeUtf8(title, titleLen) ?? "Untitled"
-
-    let app = NSApplication.shared
-    app.setActivationPolicy(.regular)
+    let appState = AppState.shared
 
     let frame = NSRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height))
 
@@ -198,16 +230,11 @@ public func windowCreate(
     nsWin.title = titleStr
     nsWin.center()
 
-    let view = MetalView(frame: frame)
+    let view = MetalView(frame: frame, device: appState.metalDevice)
     nsWin.contentView = view
 
-    let delegate = WindowDelegate()
-    nsWin.delegate = delegate
-    app.delegate   = delegate
-
-    let state = WindowState(window: nsWin, metalView: view, delegate: delegate)
-    view.state    = state
-    delegate.state = state
+    let state = WindowState(window: nsWin, metalView: view)
+    view.state = state
 
     return Unmanaged.passRetained(state).toOpaque()
 }
@@ -218,10 +245,6 @@ public func windowShow(_ win: UnsafeMutableRawPointer?) {
     let s = stateFrom(win)
     s.window.makeKeyAndOrderFront(nil)
     s.window.makeFirstResponder(s.metalView)
-    if !appDidFinishLaunching {
-        NSApp.finishLaunching()
-        appDidFinishLaunching = true
-    }
     NSApp.activate(ignoringOtherApps: true)
     s.metalView.startDisplayLink()
 }
@@ -286,22 +309,6 @@ public func windowSetOnWindowResize(_ win: UnsafeMutableRawPointer?, _ cb: Resiz
 public func windowSetOnRender(_ win: UnsafeMutableRawPointer?, _ cb: VoidCallback?) {
     guard let win else { return }
     stateFrom(win).onRender = cb
-}
-
-// MARK: - Metal resources
-
-@_cdecl("window_get_metal_device")
-public func windowGetMetalDevice(_ win: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer? {
-    guard let win else { return nil }
-    let dev = stateFrom(win).metalView.metalDevice as AnyObject
-    return Unmanaged.passUnretained(dev).toOpaque()
-}
-
-@_cdecl("window_get_metal_queue")
-public func windowGetMetalQueue(_ win: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer? {
-    guard let win else { return nil }
-    let queue = stateFrom(win).metalView.commandQueue as AnyObject
-    return Unmanaged.passUnretained(queue).toOpaque()
 }
 
 // MARK: - Frame

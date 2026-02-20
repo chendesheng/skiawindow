@@ -1,9 +1,9 @@
 /**
  * main.ts — Deno entry point.
  *
- * Creates an NSWindow (via FFI -> libWindow.dylib), sets up a Skia GPU
- * context (via FFI -> libCSkia.dylib), registers event callbacks, and
- * enters NSApp.run() which drives the native event loop.
+ * Creates an NSWindow (via the high-level Window API), sets up a Skia GPU
+ * context, registers event callbacks, and enters NSApp.run() which drives
+ * the native event loop.
  *
  * Build the dylibs first:
  *   swift build -c release
@@ -13,30 +13,17 @@
  */
 
 import {
-  skLib,
-  createGrContext,
   createBackendRenderTarget,
+  createGrContext,
   GR_SURFACE_ORIGIN_TOP_LEFT,
-  SK_COLOR_TYPE_BGRA_8888,
-  skStringNew,
   paragraphBuilderAddText,
   pointerArrayBuffer,
+  SK_COLOR_TYPE_BGRA_8888,
+  skLib,
+  skStringNew,
 } from "./capi/binding.ts";
 
-import {
-  winLib,
-  createWindow,
-  type Modifiers,
-  setOnMouseDown,
-  setOnMouseUp,
-  setOnMouseMove,
-  setOnKeyDown,
-  setOnKeyUp,
-  setOnWindowClose,
-  setOnWindowResize,
-  setOnRender,
-  windowRun,
-} from "./window/binding.ts";
+import { Application, Window } from "./window/Window.ts";
 
 const eventLogs: string[] = [];
 
@@ -93,95 +80,100 @@ function onRender(
   sk.sk_font_collection_unref(fontCollection);
 }
 
-function formatMods(mods: Modifiers): string {
-  const { ctrlKey, shiftKey, altKey, metaKey } = mods;
-  return `{ctrlKey:${ctrlKey},shiftKey:${shiftKey},altKey:${altKey},metaKey:${metaKey}}`;
+function formatMods(m: {
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+  metaKey: boolean;
+}): string {
+  return `{ctrlKey:${m.ctrlKey},shiftKey:${m.shiftKey},altKey:${m.altKey},metaKey:${m.metaKey}}`;
 }
 
 // ---------------------------------------------------------------------------
 // Setup
 // ---------------------------------------------------------------------------
 
-const win = createWindow(800, 500, "Skia Metal Demo");
-winLib.symbols.window_show(win);
+const app = Application.shared;
+const grContext = createGrContext(app.metalDevice, app.metalQueue);
 
-const device = winLib.symbols.window_get_metal_device(win);
-const queue = winLib.symbols.window_get_metal_queue(win);
-const grContext = createGrContext(device, queue);
+const win = new Window(800, 500, "Skia Metal Demo");
+win.show();
 
 // ---------------------------------------------------------------------------
 // Event handlers
 // ---------------------------------------------------------------------------
 
-setOnMouseDown(win, (mods, button, x, y) => {
-  log(`mouseDown x=${x} y=${y} button=${button} mods=${formatMods(mods)}`);
+win.addEventListener("mousedown", (e) => {
+  const d = e.detail;
+  log(`mouseDown x=${d.x} y=${d.y} button=${d.button} mods=${formatMods(d)}`);
 });
 
-setOnMouseUp(win, (mods, button, x, y) => {
-  log(`mouseUp x=${x} y=${y} button=${button} mods=${formatMods(mods)}`);
+win.addEventListener("mouseup", (e) => {
+  const d = e.detail;
+  log(`mouseUp x=${d.x} y=${d.y} button=${d.button} mods=${formatMods(d)}`);
 });
 
-setOnMouseMove(win, (mods, button, x, y) => {
-  log(`mouseMove x=${x} y=${y} button=${button} mods=${formatMods(mods)}`);
+win.addEventListener("mousemove", (e) => {
+  const d = e.detail;
+  log(`mouseMove x=${d.x} y=${d.y} button=${d.button} mods=${formatMods(d)}`);
 });
 
-setOnKeyDown(win, (mods, keyCode, isRepeat, key) => {
+win.addEventListener("keydown", (e) => {
+  const d = e.detail;
   log(
-    `keyDown key=${JSON.stringify(key)} keyCode=${keyCode} isRepeat=${isRepeat} mods=${formatMods(mods)}`,
+    `keyDown key=${
+      JSON.stringify(d.key)
+    } keyCode=${d.keyCode} isRepeat=${d.isRepeat} mods=${formatMods(d)}`,
   );
 });
 
-setOnKeyUp(win, (mods, keyCode, isRepeat, key) => {
+win.addEventListener("keyup", (e) => {
+  const d = e.detail;
   log(
-    `keyUp key=${JSON.stringify(key)} keyCode=${keyCode} isRepeat=${isRepeat} mods=${formatMods(mods)}`,
+    `keyUp key=${
+      JSON.stringify(d.key)
+    } keyCode=${d.keyCode} isRepeat=${d.isRepeat} mods=${formatMods(d)}`,
   );
 });
 
-setOnWindowClose(win, () => {
+win.addEventListener("close", () => {
   log("windowClose");
+  app.quit();
 });
 
-setOnWindowResize(win, (width, height) => {
-  log(`windowResize width=${width} height=${height}`);
+win.addEventListener("resize", (e) => {
+  const d = e.detail;
+  log(`windowResize width=${d.width} height=${d.height}`);
 });
 
-setOnRender(win, () => {
-  const drawable = winLib.symbols.window_get_next_drawable(win);
-  if (drawable) {
-    try {
-      const w = winLib.symbols.window_get_width(win) as number;
-      const h = winLib.symbols.window_get_height(win) as number;
-      const scale = winLib.symbols.window_get_scale(win) as number;
-      const texture = winLib.symbols.drawable_get_texture(drawable);
-
-      const target = createBackendRenderTarget(w, h, texture);
-      const surface = skLib.symbols.sk_surface_new_backend_render_target(
-        grContext,
-        target,
-        GR_SURFACE_ORIGIN_TOP_LEFT,
-        SK_COLOR_TYPE_BGRA_8888,
-        null,
-        null,
-      );
-      if (surface) {
-        const canvas = skLib.symbols.sk_surface_get_canvas(surface);
-        onRender(canvas, w, h, scale);
-        skLib.symbols.gr_direct_context_flush_and_submit(grContext, false);
-        skLib.symbols.sk_surface_unref(surface);
-      }
-      skLib.symbols.gr_backendrendertarget_delete(target);
-    } finally {
-      winLib.symbols.present_drawable(queue, drawable);
-    }
+win.addEventListener("render", (e) => {
+  const { texture, width, height, scale } = e.detail;
+  const target = createBackendRenderTarget(width, height, texture);
+  const surface = skLib.symbols.sk_surface_new_backend_render_target(
+    grContext,
+    target,
+    GR_SURFACE_ORIGIN_TOP_LEFT,
+    SK_COLOR_TYPE_BGRA_8888,
+    null,
+    null,
+  );
+  if (surface) {
+    const canvas = skLib.symbols.sk_surface_get_canvas(surface);
+    onRender(canvas, width, height, scale);
+    skLib.symbols.gr_direct_context_flush_and_submit(grContext, false);
+    skLib.symbols.sk_surface_unref(surface);
   }
+  skLib.symbols.gr_backendrendertarget_delete(target);
 });
 
 // ---------------------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------------------
 
-windowRun(win);
+app.run();
 
-skLib.symbols.gr_direct_context_release_resources_and_abandon_context(grContext);
+skLib.symbols.gr_direct_context_release_resources_and_abandon_context(
+  grContext,
+);
 skLib.symbols.gr_direct_context_delete(grContext);
-winLib.symbols.window_destroy(win);
+win.destroy();

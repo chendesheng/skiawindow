@@ -9,31 +9,20 @@ import QuartzCore
 // MARK: - MetalView
 
 final class MetalView: NSView {
-    let metalDevice:   MTLDevice
-    let commandQueue:  MTLCommandQueue
-    let metalLayer:    CAMetalLayer
+    let metalLayer: CAMetalLayer
 
     unowned var state: WindowState!
 
     private var link: CADisplayLink?
 
-    override init(frame: NSRect) {
-        guard let dev = MTLCreateSystemDefaultDevice() else {
-            fatalError("Metal is not supported on this device")
-        }
-        guard let queue = dev.makeCommandQueue() else {
-            fatalError("Failed to create Metal command queue")
-        }
-
+    init(frame: NSRect, device: MTLDevice) {
         let layer = CAMetalLayer()
-        layer.device        = dev
-        layer.pixelFormat   = .bgra8Unorm
+        layer.device          = device
+        layer.pixelFormat     = .bgra8Unorm
         layer.framebufferOnly = false
-        layer.isOpaque      = true
+        layer.isOpaque        = true
 
-        metalDevice  = dev
-        commandQueue = queue
-        metalLayer   = layer
+        metalLayer = layer
 
         super.init(frame: frame)
 

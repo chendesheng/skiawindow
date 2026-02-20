@@ -15,6 +15,25 @@ const utf8Decoder = new TextDecoder();
 // ---------------------------------------------------------------------------
 
 export const winLib = Deno.dlopen(libPath, {
+  // --- Application lifecycle ---
+
+  app_run: {
+    parameters: [],
+    result: "void",
+  },
+  app_quit: {
+    parameters: [],
+    result: "void",
+  },
+  app_get_metal_device: {
+    parameters: [],
+    result: "pointer",
+  },
+  app_get_metal_queue: {
+    parameters: [],
+    result: "pointer",
+  },
+
   // --- Window lifecycle ---
 
   window_create: {
@@ -67,17 +86,6 @@ export const winLib = Deno.dlopen(libPath, {
   window_set_on_render: {
     parameters: ["pointer", "pointer"],
     result: "void",
-  },
-
-  // --- Metal resources ---
-
-  window_get_metal_device: {
-    parameters: ["pointer"],
-    result: "pointer",
-  },
-  window_get_metal_queue: {
-    parameters: ["pointer"],
-    result: "pointer",
   },
 
   // --- Frame ---

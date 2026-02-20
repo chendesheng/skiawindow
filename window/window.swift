@@ -16,12 +16,40 @@ public typealias KeyCallback      = @convention(c) (UInt32, UInt16, UInt8, Int32
 public typealias VoidCallback     = @convention(c) () -> Void
 public typealias ResizeCallback   = @convention(c) (Int32, Int32) -> Void
 
-// MARK: - WindowState
+// MARK: - AppState (singleton — NSApplicationDelegate + shared Metal resources)
 
-final class WindowState {
-    let window:   NSWindow
+final class AppState: NSObject, NSApplicationDelegate {
+    static let shared = AppState()
+
+    lazy var metalDevice: MTLDevice = {
+        guard let dev = MTLCreateSystemDefaultDevice() else {
+            fatalError("Metal is not supported on this device")
+        }
+        return dev
+    }()
+
+    lazy var commandQueue: MTLCommandQueue = {
+        guard let queue = metalDevice.makeCommandQueue() else {
+            fatalError("Failed to create Metal command queue")
+        }
+        return queue
+    }()
+
+    private override init() {
+        super.init()
+
+        let app = NSApplication.shared
+        app.setActivationPolicy(.regular)
+        app.delegate = self
+        app.finishLaunching()
+    }
+}
+
+// MARK: - WindowState (NSWindowDelegate)
+
+final class WindowState: NSObject, NSWindowDelegate {
+    let window:    NSWindow
     let metalView: MetalView
-    let delegate: WindowDelegate
 
     var onMouseDown: MouseCallback?
     var onMouseUp: MouseCallback?
@@ -32,39 +60,16 @@ final class WindowState {
     var onWindowResize: ResizeCallback?
     var onRender: VoidCallback?
 
-    init(window: NSWindow, metalView: MetalView, delegate: WindowDelegate) {
+    init(window: NSWindow, metalView: MetalView) {
         self.window    = window
         self.metalView = metalView
-        self.delegate  = delegate
+        super.init()
+        window.delegate = self
     }
-}
-
-// MARK: - WindowDelegate
-
-final class WindowDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-    weak var state: WindowState?
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     func windowWillClose(_ notification: Notification) {
-        state?.metalView.stopDisplayLink()
-        state?.onWindowClose?()
-
-        NSApp.stop(nil)
-        // NSApp.stop only takes effect after the current event finishes;
-        // post a dummy event to wake the run loop so NSApp.run() returns.
-        let event = NSEvent.otherEvent(
-            with: .applicationDefined,
-            location: .zero,
-            modifierFlags: [],
-            timestamp: 0,
-            windowNumber: 0,
-            context: nil,
-            subtype: 0,
-            data1: 0,
-            data2: 0
-        )
-        if let event { NSApp.postEvent(event, atStart: false) }
+        metalView.stopDisplayLink()
+        onWindowClose?()
     }
 }
 
