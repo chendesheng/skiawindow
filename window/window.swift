@@ -8,17 +8,13 @@
 import Cocoa
 import Metal
 import QuartzCore
-import CSkia
 
-let EVENT_TYPE_NONE: Int32             = 0
-let EVENT_TYPE_WINDOW_CLOSE: Int32     = 1
-let EVENT_TYPE_WINDOW_RESIZE: Int32    = 2
-let EVENT_TYPE_WINDOW_FRAME_READY: Int32 = 3
-let EVENT_TYPE_MOUSE_DOWN: Int32       = 4
-let EVENT_TYPE_MOUSE_UP: Int32         = 5
-let EVENT_TYPE_MOUSE_MOVE: Int32       = 6
-let EVENT_TYPE_KEY_DOWN: Int32         = 7
-let EVENT_TYPE_KEY_UP: Int32           = 8
+// MARK: - Callback typedefs
+
+public typealias MouseCallback    = @convention(c) (UInt32, Int32, Double, Double) -> Void
+public typealias KeyCallback      = @convention(c) (UInt32, UInt16, UInt8, Int32, UInt32) -> Void
+public typealias VoidCallback     = @convention(c) () -> Void
+public typealias ResizeCallback   = @convention(c) (Int32, Int32) -> Void
 
 // MARK: - WindowState
 
@@ -27,42 +23,19 @@ final class WindowState {
     let skiaView: SkiaMetalView
     let delegate: WindowDelegate
 
-    private var pendingClose = false
-    private var pendingResize = false
-    private var pendingFrameReady = false
+    var onMouseDown: MouseCallback?
+    var onMouseUp: MouseCallback?
+    var onMouseMove: MouseCallback?
+    var onKeyDown: KeyCallback?
+    var onKeyUp: KeyCallback?
+    var onWindowClose: VoidCallback?
+    var onWindowResize: ResizeCallback?
+    var onRender: VoidCallback?
 
     init(window: NSWindow, skiaView: SkiaMetalView, delegate: WindowDelegate) {
         self.window   = window
         self.skiaView = skiaView
         self.delegate = delegate
-    }
-
-    func markCloseEvent() {
-        pendingClose = true
-    }
-
-    func markResizeEvent() {
-        pendingResize = true
-    }
-
-    func markFrameReadyEvent() {
-        pendingFrameReady = true
-    }
-
-    func pollPendingEvent() -> Int32 {
-        if pendingClose {
-            pendingClose = false
-            return EVENT_TYPE_WINDOW_CLOSE
-        }
-        if pendingResize {
-            pendingResize = false
-            return EVENT_TYPE_WINDOW_RESIZE
-        }
-        if pendingFrameReady {
-            pendingFrameReady = false
-            return EVENT_TYPE_WINDOW_FRAME_READY
-        }
-        return EVENT_TYPE_NONE
     }
 }
 
@@ -74,8 +47,24 @@ final class WindowDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     func windowWillClose(_ notification: Notification) {
-        state?.skiaView.stopFrameReadyDisplayLink()
-        state?.markCloseEvent()
+        state?.skiaView.stopDisplayLink()
+        state?.onWindowClose?()
+
+        NSApp.stop(nil)
+        // NSApp.stop only takes effect after the current event finishes;
+        // post a dummy event to wake the run loop so NSApp.run() returns.
+        let event = NSEvent.otherEvent(
+            with: .applicationDefined,
+            location: .zero,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            subtype: 0,
+            data1: 0,
+            data2: 0
+        )
+        if let event { NSApp.postEvent(event, atStart: false) }
     }
 }
 

@@ -2,8 +2,11 @@
  * window_api.swift — C API exports (@_cdecl) for the window module.
  *
  * Exposes:
- *   window_create / window_show / window_pump / window_destroy
- *   window_poll_event / window_begin_frame / window_end_frame / window_get_scale
+ *   window_create / window_show / window_run / window_destroy
+ *   window_set_on_mouse_down / window_set_on_mouse_up / window_set_on_mouse_move
+ *   window_set_on_key_down / window_set_on_key_up
+ *   window_set_on_window_close / window_set_on_window_resize / window_set_on_render
+ *   window_begin_frame / window_end_frame / window_get_scale
  *   window_set_title / window_set_width / window_set_height
  *   window_set_close_button_visible / window_set_miniaturize_button_visible / window_set_zoom_button_visible
  *   window_set_resizable
@@ -14,15 +17,16 @@
 
 import Cocoa
 import Carbon.HIToolbox
-import CSkia
 
-// MARK: - Lifecycle
+// MARK: - Constants
 
 private var appDidFinishLaunching = false
+
 private let MOD_CTRL: UInt32  = 1 << 0
 private let MOD_SHIFT: UInt32 = 1 << 1
 private let MOD_ALT: UInt32   = 1 << 2
 private let MOD_META: UInt32  = 1 << 3
+
 private let KEY_KIND_NONE: Int32 = 0
 private let KEY_KIND_TEXT: Int32 = 1
 private let KEY_KIND_DEAD: Int32 = 2
@@ -58,7 +62,9 @@ private let KEY_KIND_F10: Int32 = 37
 private let KEY_KIND_F11: Int32 = 38
 private let KEY_KIND_F12: Int32 = 39
 
-private func modifierBits(from flags: NSEvent.ModifierFlags) -> UInt32 {
+// MARK: - Event data helpers (module-internal, used by SkiaMetalView)
+
+func modifierBits(from flags: NSEvent.ModifierFlags) -> UInt32 {
     var bits: UInt32 = 0
     if flags.contains(.control) { bits |= MOD_CTRL }
     if flags.contains(.shift) { bits |= MOD_SHIFT }
@@ -142,7 +148,7 @@ private func specialKeyKind(for keyCode: UInt16) -> Int32? {
     }
 }
 
-private func keyboardEventData(_ event: NSEvent) -> (specialKey: Int32, key: UInt32) {
+func keyboardEventData(_ event: NSEvent) -> (specialKey: Int32, key: UInt32) {
     if let special = specialKeyKind(for: event.keyCode) {
         return (special, 0)
     }
@@ -163,92 +169,7 @@ private func decodeUtf8(_ bytes: UnsafePointer<UInt8>?, _ length: Int) -> String
     return String(decoding: buffer, as: UTF8.self)
 }
 
-private func mouseEventStruct(type: Int32, event: NSEvent, state: WindowState) -> window_event_t {
-    let p = state.skiaView.convert(event.locationInWindow, from: nil)
-    let flippedY = state.skiaView.bounds.height - p.y
-    var out = window_event_t()
-    out.type = UInt64(type)
-    out.data.mouse.mod_bits = modifierBits(from: event.modifierFlags)
-    out.data.mouse.x = p.x
-    out.data.mouse.y = flippedY
-    out.data.mouse.button = Int32(event.buttonNumber)
-    return out
-}
-
-private func keyboardEventStruct(type: Int32, event: NSEvent) -> window_event_t {
-    let eventKey = keyboardEventData(event)
-    var out = window_event_t()
-    out.type = UInt64(type)
-    out.data.key.mod_bits = modifierBits(from: event.modifierFlags)
-    out.data.key.key_code = event.keyCode
-    out.data.key.is_repeat = event.isARepeat ? 1 : 0
-    out.data.key.reserved0 = 0
-    out.data.key.special_key = eventKey.specialKey
-    out.data.key.key = eventKey.key
-    return out
-}
-
-private func resizeEventStruct(width: Int32, height: Int32) -> window_event_t {
-    var out = window_event_t()
-    out.type = UInt64(EVENT_TYPE_WINDOW_RESIZE)
-    out.data.resize.width = width
-    out.data.resize.height = height
-    return out
-}
-
-private func simpleEventStruct(type: Int32) -> window_event_t {
-    var out = window_event_t()
-    out.type = UInt64(type)
-    return out
-}
-
-private func pollEventStruct(_ s: WindowState) -> window_event_t? {
-    let pending = s.pollPendingEvent()
-    if pending != EVENT_TYPE_NONE {
-        switch pending {
-        case EVENT_TYPE_WINDOW_RESIZE:
-            return resizeEventStruct(width: s.skiaView.drawableWidth, height: s.skiaView.drawableHeight)
-        case EVENT_TYPE_WINDOW_CLOSE:
-            return simpleEventStruct(type: EVENT_TYPE_WINDOW_CLOSE)
-        case EVENT_TYPE_WINDOW_FRAME_READY:
-            return simpleEventStruct(type: EVENT_TYPE_WINDOW_FRAME_READY)
-        default:
-            return nil
-        }
-    }
-
-    guard let event = NSApp.nextEvent(
-        matching: .any,
-        until: Date.distantPast,
-        inMode: .default,
-        dequeue: true
-    ) else {
-        return nil
-    }
-
-    let out: window_event_t?
-    if event.window !== s.window {
-        out = nil
-    } else {
-        switch event.type {
-        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
-            out = mouseEventStruct(type: EVENT_TYPE_MOUSE_DOWN, event: event, state: s)
-        case .leftMouseUp, .rightMouseUp, .otherMouseUp:
-            out = mouseEventStruct(type: EVENT_TYPE_MOUSE_UP, event: event, state: s)
-        case .mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged:
-            out = mouseEventStruct(type: EVENT_TYPE_MOUSE_MOVE, event: event, state: s)
-        case .keyDown:
-            out = keyboardEventStruct(type: EVENT_TYPE_KEY_DOWN, event: event)
-        case .keyUp:
-            out = keyboardEventStruct(type: EVENT_TYPE_KEY_UP, event: event)
-        default:
-            out = nil
-        }
-    }
-
-    NSApp.sendEvent(event)
-    return out
-}
+// MARK: - Lifecycle
 
 @_cdecl("window_create")
 public func windowCreate(
@@ -298,27 +219,72 @@ public func windowShow(_ win: UnsafeMutableRawPointer?) {
         appDidFinishLaunching = true
     }
     NSApp.activate(ignoringOtherApps: true)
-    s.skiaView.startFrameReadyDisplayLink()
+    s.skiaView.startDisplayLink()
 }
 
-@_cdecl("window_pump")
-public func windowPump(_ win: UnsafeMutableRawPointer?) {
+@_cdecl("window_run")
+public func windowRun(_ win: UnsafeMutableRawPointer?) {
     guard win != nil else { return }
-    autoreleasepool {
-        NSApp.updateWindows()
-        _ = RunLoop.main.run(mode: .default, before: Date())
-    }
+    NSApp.run()
 }
 
-@_cdecl("window_poll_event")
-public func windowPollEvent(_ win: UnsafeMutableRawPointer?, _ outEvent: UnsafeMutableRawPointer?) -> Bool {
-    guard let win, let outEvent else { return false }
-    guard var event = pollEventStruct(stateFrom(win)) else { return false }
-    withUnsafePointer(to: &event) { ptr in
-        outEvent.copyMemory(from: UnsafeRawPointer(ptr), byteCount: MemoryLayout<window_event_t>.size)
-    }
-    return true
+@_cdecl("window_destroy")
+public func windowDestroy(_ win: UnsafeMutableRawPointer?) {
+    guard let win else { return }
+    Unmanaged<WindowState>.fromOpaque(win).release()
 }
+
+// MARK: - Event callback setters
+
+@_cdecl("window_set_on_mouse_down")
+public func windowSetOnMouseDown(_ win: UnsafeMutableRawPointer?, _ cb: MouseCallback?) {
+    guard let win else { return }
+    stateFrom(win).onMouseDown = cb
+}
+
+@_cdecl("window_set_on_mouse_up")
+public func windowSetOnMouseUp(_ win: UnsafeMutableRawPointer?, _ cb: MouseCallback?) {
+    guard let win else { return }
+    stateFrom(win).onMouseUp = cb
+}
+
+@_cdecl("window_set_on_mouse_move")
+public func windowSetOnMouseMove(_ win: UnsafeMutableRawPointer?, _ cb: MouseCallback?) {
+    guard let win else { return }
+    stateFrom(win).onMouseMove = cb
+}
+
+@_cdecl("window_set_on_key_down")
+public func windowSetOnKeyDown(_ win: UnsafeMutableRawPointer?, _ cb: KeyCallback?) {
+    guard let win else { return }
+    stateFrom(win).onKeyDown = cb
+}
+
+@_cdecl("window_set_on_key_up")
+public func windowSetOnKeyUp(_ win: UnsafeMutableRawPointer?, _ cb: KeyCallback?) {
+    guard let win else { return }
+    stateFrom(win).onKeyUp = cb
+}
+
+@_cdecl("window_set_on_window_close")
+public func windowSetOnWindowClose(_ win: UnsafeMutableRawPointer?, _ cb: VoidCallback?) {
+    guard let win else { return }
+    stateFrom(win).onWindowClose = cb
+}
+
+@_cdecl("window_set_on_window_resize")
+public func windowSetOnWindowResize(_ win: UnsafeMutableRawPointer?, _ cb: ResizeCallback?) {
+    guard let win else { return }
+    stateFrom(win).onWindowResize = cb
+}
+
+@_cdecl("window_set_on_render")
+public func windowSetOnRender(_ win: UnsafeMutableRawPointer?, _ cb: VoidCallback?) {
+    guard let win else { return }
+    stateFrom(win).onRender = cb
+}
+
+// MARK: - Frame
 
 @_cdecl("window_begin_frame")
 public func windowBeginFrame(_ win: UnsafeMutableRawPointer?) -> OpaquePointer? {
@@ -338,13 +304,7 @@ public func windowGetScale(_ win: UnsafeMutableRawPointer?) -> Double {
     return stateFrom(win).window.backingScaleFactor
 }
 
-@_cdecl("window_destroy")
-public func windowDestroy(_ win: UnsafeMutableRawPointer?) {
-    guard let win else { return }
-    Unmanaged<WindowState>.fromOpaque(win).release()
-}
-
-// MARK: - Setters
+// MARK: - Property setters
 
 @_cdecl("window_set_title")
 public func windowSetTitle(_ win: UnsafeMutableRawPointer?, _ title: UnsafePointer<UInt8>?, _ titleLen: Int) {
@@ -399,7 +359,7 @@ public func windowSetResizable(_ win: UnsafeMutableRawPointer?, _ resizable: Boo
     }
 }
 
-// MARK: - Getters
+// MARK: - Property getters
 
 @_cdecl("window_get_title")
 public func windowGetTitle(_ win: UnsafeMutableRawPointer?, _ buf: UnsafeMutablePointer<UInt8>?, _ bufLen: Int) -> Int {

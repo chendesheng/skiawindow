@@ -15,8 +15,6 @@ final class SkiaMetalView: NSView {
     let metalLayer:    CAMetalLayer
     let grContext:     OpaquePointer    // gr_direct_context_t *
 
-    // Back-reference to WindowState for firing event callbacks.
-    // Set immediately after WindowState is created; safe to use unowned.
     unowned var state: WindowState!
 
     private var link: CADisplayLink?
@@ -67,35 +65,74 @@ final class SkiaMetalView: NSView {
 
     // MARK: Display link
 
-    func startFrameReadyDisplayLink() {
-        // NSView.displayLink(target:selector:) — macOS 14+
-        // Automatically pauses when the view is hidden/off-screen and
-        // adjusts to the correct refresh rate when the window changes display.
+    func startDisplayLink() {
         let dl = self.displayLink(target: self, selector: #selector(displayLinkTick))
         dl.add(to: .main, forMode: .common)
         link = dl
     }
 
     @objc private func displayLinkTick() {
-        state.markFrameReadyEvent()
+        state.onRender?()
     }
 
-    func stopFrameReadyDisplayLink() {
+    func stopDisplayLink() {
         link?.invalidate()
         link = nil
     }
 
-    // MARK: First responder (required for key events)
+    // MARK: First responder
 
     override var acceptsFirstResponder: Bool { true }
 
+    // MARK: Key events
+
     override func keyDown(with event: NSEvent) {
-        // Consume key events so AppKit doesn't emit the system alert sound.
+        let mods = modifierBits(from: event.modifierFlags)
+        let keyData = keyboardEventData(event)
+        state.onKeyDown?(mods, event.keyCode, event.isARepeat ? 1 : 0, keyData.specialKey, keyData.key)
     }
 
     override func keyUp(with event: NSEvent) {
-        // Consume key events so AppKit doesn't emit the system alert sound.
+        let mods = modifierBits(from: event.modifierFlags)
+        let keyData = keyboardEventData(event)
+        state.onKeyUp?(mods, event.keyCode, event.isARepeat ? 1 : 0, keyData.specialKey, keyData.key)
     }
+
+    // MARK: Mouse events
+
+    private func fireMouseDown(_ event: NSEvent) {
+        let (mods, button, x, y) = mouseParams(event)
+        state.onMouseDown?(mods, button, x, y)
+    }
+
+    private func fireMouseUp(_ event: NSEvent) {
+        let (mods, button, x, y) = mouseParams(event)
+        state.onMouseUp?(mods, button, x, y)
+    }
+
+    private func fireMouseMove(_ event: NSEvent) {
+        let (mods, button, x, y) = mouseParams(event)
+        state.onMouseMove?(mods, button, x, y)
+    }
+
+    private func mouseParams(_ event: NSEvent) -> (UInt32, Int32, Double, Double) {
+        let p = convert(event.locationInWindow, from: nil)
+        let flippedY = bounds.height - p.y
+        return (modifierBits(from: event.modifierFlags), Int32(event.buttonNumber), p.x, flippedY)
+    }
+
+    override func mouseDown(with event: NSEvent)      { fireMouseDown(event) }
+    override func rightMouseDown(with event: NSEvent)  { fireMouseDown(event) }
+    override func otherMouseDown(with event: NSEvent)  { fireMouseDown(event) }
+
+    override func mouseUp(with event: NSEvent)         { fireMouseUp(event) }
+    override func rightMouseUp(with event: NSEvent)    { fireMouseUp(event) }
+    override func otherMouseUp(with event: NSEvent)    { fireMouseUp(event) }
+
+    override func mouseMoved(with event: NSEvent)         { fireMouseMove(event) }
+    override func mouseDragged(with event: NSEvent)       { fireMouseMove(event) }
+    override func rightMouseDragged(with event: NSEvent)  { fireMouseMove(event) }
+    override func otherMouseDragged(with event: NSEvent)  { fireMouseMove(event) }
 
     // MARK: Tracking area (required for mouseMoved events)
 
@@ -122,15 +159,13 @@ final class SkiaMetalView: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         updateDrawableSize()
-        if window != nil { state.markResizeEvent() }
+        if window != nil { state.onWindowResize?(drawableWidth, drawableHeight) }
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window != nil { updateDrawableSize() }
     }
-
-    // MARK: Mouse events
 
     // MARK: Rendering
 
