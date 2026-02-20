@@ -15,13 +15,14 @@ final class SkiaMetalView: NSView {
     let metalLayer:    CAMetalLayer
     let grContext:     OpaquePointer    // gr_direct_context_t *
 
-    var renderCallback: RenderFn?
-
     // Back-reference to WindowState for firing event callbacks.
     // Set immediately after WindowState is created; safe to use unowned.
     unowned var state: WindowState!
 
     private var link: CADisplayLink?
+    private var activeDrawable: CAMetalDrawable?
+    private var activeTarget: OpaquePointer?
+    private var activeSurface: OpaquePointer?
 
     override init(frame: NSRect) {
         guard let dev = MTLCreateSystemDefaultDevice() else {
@@ -59,13 +60,14 @@ final class SkiaMetalView: NSView {
 
     deinit {
         link?.invalidate()
+        cleanupActiveFrame()
         gr_direct_context_release_resources_and_abandon_context(grContext)
         gr_direct_context_delete(grContext)
     }
 
     // MARK: Display link
 
-    func startDisplayLink() {
+    func startFrameReadyDisplayLink() {
         // NSView.displayLink(target:selector:) — macOS 14+
         // Automatically pauses when the view is hidden/off-screen and
         // adjusts to the correct refresh rate when the window changes display.
@@ -75,10 +77,10 @@ final class SkiaMetalView: NSView {
     }
 
     @objc private func displayLinkTick() {
-        render()
+        state.markFrameReadyEvent()
     }
 
-    func stopDisplayLink() {
+    func stopFrameReadyDisplayLink() {
         link?.invalidate()
         link = nil
     }
@@ -86,6 +88,14 @@ final class SkiaMetalView: NSView {
     // MARK: First responder (required for key events)
 
     override var acceptsFirstResponder: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        // Consume key events so AppKit doesn't emit the system alert sound.
+    }
+
+    override func keyUp(with event: NSEvent) {
+        // Consume key events so AppKit doesn't emit the system alert sound.
+    }
 
     // MARK: Tracking area (required for mouseMoved events)
 
@@ -112,7 +122,7 @@ final class SkiaMetalView: NSView {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         updateDrawableSize()
-        if window != nil { state?.onResize?() }
+        if window != nil { state.markResizeEvent() }
     }
 
     override func viewDidMoveToWindow() {
@@ -122,29 +132,49 @@ final class SkiaMetalView: NSView {
 
     // MARK: Mouse events
 
-    override func mouseDown(with event: NSEvent)  { state?.onMouseDown?() }
-    override func mouseUp(with event: NSEvent)    { state?.onMouseUp?() }
-    override func mouseMoved(with event: NSEvent) { state?.onMouseMove?() }
-
-    // MARK: Key events
-
-    override func keyDown(with event: NSEvent) { state?.onKeyDown?() }
-    override func keyUp(with event: NSEvent)   { state?.onKeyUp?() }
-
     // MARK: Rendering
 
-    func render() {
+    var drawableWidth: Int32 {
+        Int32(metalLayer.drawableSize.width)
+    }
+
+    var drawableHeight: Int32 {
+        Int32(metalLayer.drawableSize.height)
+    }
+
+    private func cleanupActiveFrame() {
+        if let surface = activeSurface {
+            sk_surface_unref(surface)
+            activeSurface = nil
+        }
+        if let target = activeTarget {
+            gr_backendrendertarget_delete(target)
+            activeTarget = nil
+        }
+        activeDrawable = nil
+    }
+
+    func beginFrame() -> OpaquePointer? {
+        if activeSurface != nil || activeTarget != nil || activeDrawable != nil {
+            return nil
+        }
+
         let drawableSize = metalLayer.drawableSize
         let w = Int32(drawableSize.width)
         let h = Int32(drawableSize.height)
-        guard w > 0, h > 0 else { return }
+        guard w > 0, h > 0 else { return nil }
 
-        guard let drawable = metalLayer.nextDrawable() else { return }
+        guard let drawable = metalLayer.nextDrawable() else { return nil }
+        activeDrawable = drawable
 
         var texInfo = gr_mtl_textureinfo_t()
         texInfo.fTexture = UnsafeRawPointer(Unmanaged.passUnretained(drawable.texture as AnyObject).toOpaque())
 
-        guard let target = gr_backendrendertarget_new_metal(w, h, &texInfo) else { return }
+        guard let target = gr_backendrendertarget_new_metal(w, h, &texInfo) else {
+            activeDrawable = nil
+            return nil
+        }
+        activeTarget = target
 
         guard let surface = sk_surface_new_backend_render_target(
             grContext, target,
@@ -152,14 +182,27 @@ final class SkiaMetalView: NSView {
             SK_COLOR_TYPE_BGRA_8888,
             nil, nil
         ) else {
-            gr_backendrendertarget_delete(target)
+            cleanupActiveFrame()
             NSLog("Failed to create Skia surface")
+            return nil
+        }
+        activeSurface = surface
+
+        return sk_surface_get_canvas(surface)
+    }
+
+    func endFrame() {
+        guard let drawable = activeDrawable else {
+            cleanupActiveFrame()
+            return
+        }
+        guard activeSurface != nil && activeTarget != nil else {
+            cleanupActiveFrame()
             return
         }
 
-        if let cb = renderCallback {
-            let scale = window?.backingScaleFactor ?? 1.0
-            cb(sk_surface_get_canvas(surface), w, h, scale)
+        defer {
+            cleanupActiveFrame()
         }
 
         gr_direct_context_flush_and_submit(grContext, false)
@@ -168,8 +211,5 @@ final class SkiaMetalView: NSView {
             cmd.present(drawable)
             cmd.commit()
         }
-
-        sk_surface_unref(surface)
-        gr_backendrendertarget_delete(target)
     }
 }

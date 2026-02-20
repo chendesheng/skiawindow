@@ -25,24 +25,49 @@ export const lib = Deno.dlopen(libPath, {
     nonblocking: false,
   },
 
-  /**
-   * Register the frame render callback.
-   * Signature: (sk_canvas_t*, int width, int height, double scale) -> void
-   */
-  window_set_on_render: {
-    parameters: ["pointer", "function"],
-    result: "void",
-    nonblocking: false,
-  },
-
-  /** Start the NSApplication run loop. Blocks until the window is closed. */
-  window_run: {
+  /** Show and activate the window without entering NSApp.run(). */
+  window_show: {
     parameters: ["pointer"],
     result: "void",
     nonblocking: false,
   },
 
-  /** Free the window_t struct (call after window_run returns). */
+  /** Pump pending AppKit events once (non-blocking). */
+  window_pump: {
+    parameters: ["pointer"],
+    result: "void",
+    nonblocking: false,
+  },
+
+  /** Poll one queued event into caller-provided buffer. Returns false when queue is empty. */
+  window_poll_event: {
+    parameters: ["pointer", "buffer"],
+    result: "bool",
+    nonblocking: false,
+  },
+
+  /** Begin a frame and return sk_canvas_t* (or null if no drawable is available). */
+  window_begin_frame: {
+    parameters: ["pointer"],
+    result: "pointer",
+    nonblocking: false,
+  },
+
+  /** End the active frame (flush/present). */
+  window_end_frame: {
+    parameters: ["pointer"],
+    result: "void",
+    nonblocking: false,
+  },
+
+  /** Return the backing scale factor for HiDPI-aware layout. */
+  window_get_scale: {
+    parameters: ["pointer"],
+    result: "f64",
+    nonblocking: false,
+  },
+
+  /** Free the window_t struct. */
   window_destroy: {
     parameters: ["pointer"],
     result: "void",
@@ -135,50 +160,6 @@ export const lib = Deno.dlopen(libPath, {
   window_get_resizable: {
     parameters: ["pointer"],
     result: "bool",
-    nonblocking: false,
-  },
-
-  // --- Window event callbacks (all have signature: () -> void) ---
-
-  window_set_on_resize: {
-    parameters: ["pointer", "function"],
-    result: "void",
-    nonblocking: false,
-  },
-
-  window_set_on_close: {
-    parameters: ["pointer", "function"],
-    result: "void",
-    nonblocking: false,
-  },
-
-  window_set_on_mouse_down: {
-    parameters: ["pointer", "function"],
-    result: "void",
-    nonblocking: false,
-  },
-
-  window_set_on_mouse_up: {
-    parameters: ["pointer", "function"],
-    result: "void",
-    nonblocking: false,
-  },
-
-  window_set_on_mouse_move: {
-    parameters: ["pointer", "function"],
-    result: "void",
-    nonblocking: false,
-  },
-
-  window_set_on_key_down: {
-    parameters: ["pointer", "function"],
-    result: "void",
-    nonblocking: false,
-  },
-
-  window_set_on_key_up: {
-    parameters: ["pointer", "function"],
-    result: "void",
     nonblocking: false,
   },
 
@@ -340,6 +321,154 @@ export const lib = Deno.dlopen(libPath, {
 });
 
 // ---------------------------------------------------------------------------
+// Window events
+// ---------------------------------------------------------------------------
+
+const EVENT_TYPE_WINDOW_CLOSE = 1;
+const EVENT_TYPE_WINDOW_RESIZE = 2;
+const EVENT_TYPE_WINDOW_FRAME_READY = 3;
+const EVENT_TYPE_MOUSE_DOWN = 4;
+const EVENT_TYPE_MOUSE_UP = 5;
+const EVENT_TYPE_MOUSE_MOVE = 6;
+const EVENT_TYPE_KEY_DOWN = 7;
+const EVENT_TYPE_KEY_UP = 8;
+
+const MOD_CTRL = 1 << 0;
+const MOD_SHIFT = 1 << 1;
+const MOD_ALT = 1 << 2;
+const MOD_META = 1 << 3;
+
+const WINDOW_EVENT_SIZE = 104;
+const OFF_TYPE = 0;
+const OFF_MOD_BITS = 4;
+const OFF_X = 8;
+const OFF_Y = 16;
+const OFF_BUTTON = 24;
+const OFF_KEY_CODE = 28;
+const OFF_IS_REPEAT = 30;
+const OFF_WIDTH = 32;
+const OFF_HEIGHT = 36;
+const OFF_KEY = 40;
+const KEY_VALUE_MAX_BYTES = 64;
+
+const eventBuffer = new Uint8Array(new ArrayBuffer(WINDOW_EVENT_SIZE));
+const eventView = new DataView(eventBuffer.buffer);
+
+export type Modifiers = {
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+  metaKey: boolean;
+};
+
+export type EventType =
+  | "windowClose"
+  | "windowResize"
+  | "windowFrameReady"
+  | "mouseDown"
+  | "mouseUp"
+  | "mouseMove"
+  | "keyDown"
+  | "keyUp";
+
+export type Event = {
+  type: EventType;
+  mods: Modifiers;
+  x?: number;
+  y?: number;
+  button?: number;
+  keyCode?: number;
+  key?: string;
+  isRepeat?: boolean;
+  width?: number;
+  height?: number;
+};
+
+function decodeModifiers(modBits: number): Modifiers {
+  return {
+    ctrlKey: (modBits & MOD_CTRL) !== 0,
+    shiftKey: (modBits & MOD_SHIFT) !== 0,
+    altKey: (modBits & MOD_ALT) !== 0,
+    metaKey: (modBits & MOD_META) !== 0,
+  };
+}
+
+function decodeCString(offset: number, maxBytes: number): string {
+  const bytes = new Uint8Array(eventBuffer.buffer, offset, maxBytes);
+  let end = 0;
+  while (end < bytes.length && bytes[end] !== 0) {
+    end++;
+  }
+  return new TextDecoder().decode(bytes.subarray(0, end));
+}
+
+export function pollEvent(win: Deno.PointerValue): Event | null {
+  const hasEvent = lib.symbols.window_poll_event(win, eventBuffer) as boolean;
+  if (!hasEvent) {
+    return null;
+  }
+
+  const type = eventView.getInt32(OFF_TYPE, true);
+  const mods = decodeModifiers(eventView.getUint32(OFF_MOD_BITS, true));
+
+  switch (type) {
+    case EVENT_TYPE_WINDOW_CLOSE:
+      return { type: "windowClose", mods };
+    case EVENT_TYPE_WINDOW_RESIZE:
+      return {
+        type: "windowResize",
+        mods,
+        width: eventView.getInt32(OFF_WIDTH, true),
+        height: eventView.getInt32(OFF_HEIGHT, true),
+      };
+    case EVENT_TYPE_WINDOW_FRAME_READY:
+      return { type: "windowFrameReady", mods };
+    case EVENT_TYPE_MOUSE_DOWN:
+      return {
+        type: "mouseDown",
+        mods,
+        x: eventView.getFloat64(OFF_X, true),
+        y: eventView.getFloat64(OFF_Y, true),
+        button: eventView.getInt32(OFF_BUTTON, true),
+      };
+    case EVENT_TYPE_MOUSE_UP:
+      return {
+        type: "mouseUp",
+        mods,
+        x: eventView.getFloat64(OFF_X, true),
+        y: eventView.getFloat64(OFF_Y, true),
+        button: eventView.getInt32(OFF_BUTTON, true),
+      };
+    case EVENT_TYPE_MOUSE_MOVE:
+      return {
+        type: "mouseMove",
+        mods,
+        x: eventView.getFloat64(OFF_X, true),
+        y: eventView.getFloat64(OFF_Y, true),
+        button: eventView.getInt32(OFF_BUTTON, true),
+      };
+    case EVENT_TYPE_KEY_DOWN:
+      return {
+        type: "keyDown",
+        mods,
+        keyCode: eventView.getUint16(OFF_KEY_CODE, true),
+        key: decodeCString(OFF_KEY, KEY_VALUE_MAX_BYTES),
+        isRepeat: eventView.getUint8(OFF_IS_REPEAT) !== 0,
+      };
+    case EVENT_TYPE_KEY_UP:
+      return {
+        type: "keyUp",
+        mods,
+        keyCode: eventView.getUint16(OFF_KEY_CODE, true),
+        key: decodeCString(OFF_KEY, KEY_VALUE_MAX_BYTES),
+        isRepeat: eventView.getUint8(OFF_IS_REPEAT) !== 0,
+      };
+    default:
+      return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -368,15 +497,3 @@ export function pointerArrayBuffer(
   }
   return new Uint8Array(ab);
 }
-
-/** The FFI definition for the render callback passed to window_set_on_render. */
-export const renderCallbackDef = {
-  parameters: ["pointer", "i32", "i32", "f64"],
-  result: "void",
-} as const;
-
-/** The FFI definition for the zero-argument event callbacks (resize, close, mouse, key). */
-export const eventCallbackDef = {
-  parameters: [],
-  result: "void",
-} as const;
