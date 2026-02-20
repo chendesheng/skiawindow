@@ -1,26 +1,22 @@
 /*
- * skia_metal_view.swift — Metal-backed NSView with Skia rendering.
+ * metal_view.swift — Metal-backed NSView (no Skia dependency).
  */
 
 import Cocoa
 import Metal
 import QuartzCore
-import CSkia
 
-// MARK: - SkiaMetalView
+// MARK: - MetalView
 
-final class SkiaMetalView: NSView {
+final class MetalView: NSView {
     let metalDevice:   MTLDevice
     let commandQueue:  MTLCommandQueue
     let metalLayer:    CAMetalLayer
-    let grContext:     OpaquePointer    // gr_direct_context_t *
 
     unowned var state: WindowState!
 
     private var link: CADisplayLink?
     private var activeDrawable: CAMetalDrawable?
-    private var activeTarget: OpaquePointer?
-    private var activeSurface: OpaquePointer?
 
     override init(frame: NSRect) {
         guard let dev = MTLCreateSystemDefaultDevice() else {
@@ -36,17 +32,9 @@ final class SkiaMetalView: NSView {
         layer.framebufferOnly = false
         layer.isOpaque      = true
 
-        var backendCtx = gr_mtl_backendcontext_t()
-        backendCtx.fDevice = UnsafeRawPointer(Unmanaged.passUnretained(dev as AnyObject).toOpaque())
-        backendCtx.fQueue  = UnsafeRawPointer(Unmanaged.passUnretained(queue as AnyObject).toOpaque())
-        guard let grCtx = gr_direct_context_make_metal(&backendCtx) else {
-            fatalError("Failed to create Skia/Metal GrDirectContext")
-        }
-
         metalDevice  = dev
         commandQueue = queue
         metalLayer   = layer
-        grContext    = grCtx
 
         super.init(frame: frame)
 
@@ -58,9 +46,7 @@ final class SkiaMetalView: NSView {
 
     deinit {
         link?.invalidate()
-        cleanupActiveFrame()
-        gr_direct_context_release_resources_and_abandon_context(grContext)
-        gr_direct_context_delete(grContext)
+        activeDrawable = nil
     }
 
     // MARK: Display link
@@ -177,22 +163,9 @@ final class SkiaMetalView: NSView {
         Int32(metalLayer.drawableSize.height)
     }
 
-    private func cleanupActiveFrame() {
-        if let surface = activeSurface {
-            sk_surface_unref(surface)
-            activeSurface = nil
-        }
-        if let target = activeTarget {
-            gr_backendrendertarget_delete(target)
-            activeTarget = nil
-        }
-        activeDrawable = nil
-    }
-
-    func beginFrame() -> OpaquePointer? {
-        if activeSurface != nil || activeTarget != nil || activeDrawable != nil {
-            return nil
-        }
+    /// Returns the Metal texture pointer from the next drawable, or nil.
+    func beginFrame() -> UnsafeMutableRawPointer? {
+        guard activeDrawable == nil else { return nil }
 
         let drawableSize = metalLayer.drawableSize
         let w = Int32(drawableSize.width)
@@ -202,45 +175,13 @@ final class SkiaMetalView: NSView {
         guard let drawable = metalLayer.nextDrawable() else { return nil }
         activeDrawable = drawable
 
-        var texInfo = gr_mtl_textureinfo_t()
-        texInfo.fTexture = UnsafeRawPointer(Unmanaged.passUnretained(drawable.texture as AnyObject).toOpaque())
-
-        guard let target = gr_backendrendertarget_new_metal(w, h, &texInfo) else {
-            activeDrawable = nil
-            return nil
-        }
-        activeTarget = target
-
-        guard let surface = sk_surface_new_backend_render_target(
-            grContext, target,
-            GR_SURFACE_ORIGIN_TOP_LEFT,
-            SK_COLOR_TYPE_BGRA_8888,
-            nil, nil
-        ) else {
-            cleanupActiveFrame()
-            NSLog("Failed to create Skia surface")
-            return nil
-        }
-        activeSurface = surface
-
-        return sk_surface_get_canvas(surface)
+        return Unmanaged.passUnretained(drawable.texture as AnyObject).toOpaque()
     }
 
+    /// Presents the active drawable and releases it.
     func endFrame() {
-        guard let drawable = activeDrawable else {
-            cleanupActiveFrame()
-            return
-        }
-        guard activeSurface != nil && activeTarget != nil else {
-            cleanupActiveFrame()
-            return
-        }
-
-        defer {
-            cleanupActiveFrame()
-        }
-
-        gr_direct_context_flush_and_submit(grContext, false)
+        guard let drawable = activeDrawable else { return }
+        defer { activeDrawable = nil }
 
         if let cmd = commandQueue.makeCommandBuffer() {
             cmd.present(drawable)

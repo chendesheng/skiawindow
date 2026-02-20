@@ -11,34 +11,30 @@ let package = Package(
     name: "cskia",
     platforms: [.macOS(.v14)],
     products: [
-        .library(name: "SkiaWindow", type: .dynamic, targets: ["SkiaWindow"]),
+        .library(name: "CSkia", type: .dynamic, targets: ["CSkia"]),
+        .library(name: "Window", type: .dynamic, targets: ["Window"]),
     ],
     targets: [
         // MARK: CSkia — C wrapper compiled from sk_capi.cpp
         .target(
             name: "CSkia",
             path: "capi",
+            exclude: ["binding.ts"],
             sources: ["sk_capi.cpp"],
             publicHeadersPath: ".",
             cxxSettings: [
-                // sk_capi.cpp uses #include "include/foo.h" (relative to Skia root)
-                // and #include "include/foo/bar.h", so both paths are needed.
                 .headerSearchPath("../skia/skia"),
                 .headerSearchPath("../skia/skia/include"),
                 .define("SKIA_C_DLL"),
                 .unsafeFlags(["-fvisibility=hidden"]),
-            ]
-        ),
-
-        // MARK: SkiaWindow — Swift dynamic library
-        .target(
-            name: "SkiaWindow",
-            dependencies: ["CSkia"],
-            path: "window",
+            ],
             linkerSettings: [
-                .linkedFramework("Cocoa"),
+                .linkedFramework("CoreFoundation"),
+                .linkedFramework("CoreGraphics"),
+                .linkedFramework("CoreText"),
                 .linkedFramework("Metal"),
-                .linkedFramework("QuartzCore"),
+                .linkedFramework("Foundation"),
+                .linkedFramework("ImageIO"),
                 .unsafeFlags([
                     "-L\(skiaBuild)",
                     "-lskparagraph", "-lskshaper", "-lskia",
@@ -48,6 +44,18 @@ let package = Package(
                     "-Xlinker", "-undefined",
                     "-Xlinker", "dynamic_lookup",
                 ]),
+            ]
+        ),
+
+        // MARK: Window — pure Metal + AppKit windowing (no Skia dependency)
+        .target(
+            name: "Window",
+            path: "window",
+            exclude: ["binding.ts"],
+            linkerSettings: [
+                .linkedFramework("Cocoa"),
+                .linkedFramework("Metal"),
+                .linkedFramework("QuartzCore"),
             ]
         ),
     ],

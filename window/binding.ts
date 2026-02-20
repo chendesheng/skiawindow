@@ -1,14 +1,11 @@
 /**
- * binding.ts — Deno FFI bindings for libskiawindow.dylib.
- *
- * The dylib bundles both the NSWindow/Metal window management and
- * the Skia C API into a single shared library so Deno only needs one dlopen call.
+ * window/binding.ts — Deno FFI bindings for libWindow.dylib (Metal + AppKit).
  */
 
 import { join, dirname, fromFileUrl } from "jsr:@std/path@^1";
 
-const libDir = join(dirname(fromFileUrl(import.meta.url)), ".build", "release");
-const libPath = join(libDir, "libSkiaWindow.dylib");
+const libDir = join(dirname(fromFileUrl(import.meta.url)), "..", ".build", "release");
+const libPath = join(libDir, "libWindow.dylib");
 
 const utf8Encoder = new TextEncoder();
 const utf8Decoder = new TextDecoder();
@@ -17,7 +14,7 @@ const utf8Decoder = new TextDecoder();
 // FFI symbol definitions
 // ---------------------------------------------------------------------------
 
-export const lib = Deno.dlopen(libPath, {
+export const winLib = Deno.dlopen(libPath, {
   // --- Window lifecycle ---
 
   window_create: {
@@ -70,6 +67,17 @@ export const lib = Deno.dlopen(libPath, {
   window_set_on_render: {
     parameters: ["pointer", "pointer"],
     result: "void",
+  },
+
+  // --- Metal resources ---
+
+  window_get_metal_device: {
+    parameters: ["pointer"],
+    result: "pointer",
+  },
+  window_get_metal_queue: {
+    parameters: ["pointer"],
+    result: "pointer",
   },
 
   // --- Frame ---
@@ -147,118 +155,6 @@ export const lib = Deno.dlopen(libPath, {
   window_get_resizable: {
     parameters: ["pointer"],
     result: "bool",
-  },
-
-  // --- Canvas ---
-
-  sk_canvas_clear: {
-    parameters: ["pointer", "u32"],
-    result: "void",
-  },
-
-  // --- Font manager ---
-
-  sk_fontmgr_ref_default: {
-    parameters: [],
-    result: "pointer",
-  },
-
-  // --- Font collection ---
-
-  sk_font_collection_new: {
-    parameters: [],
-    result: "pointer",
-  },
-  sk_font_collection_set_default_font_manager: {
-    parameters: ["pointer", "pointer"],
-    result: "void",
-  },
-  sk_font_collection_unref: {
-    parameters: ["pointer"],
-    result: "void",
-  },
-
-  // --- sk_string ---
-
-  sk_string_new: {
-    parameters: ["buffer", "usize"],
-    result: "pointer",
-  },
-  sk_string_delete: {
-    parameters: ["pointer"],
-    result: "void",
-  },
-
-  // --- Text style ---
-
-  sk_text_style_create: {
-    parameters: [],
-    result: "pointer",
-  },
-  sk_text_style_set_color: {
-    parameters: ["pointer", "u32"],
-    result: "void",
-  },
-  sk_text_style_set_font_size: {
-    parameters: ["pointer", "f32"],
-    result: "void",
-  },
-  sk_text_style_set_font_families: {
-    parameters: ["pointer", "buffer", "usize"],
-    result: "void",
-  },
-
-  // --- Paragraph style ---
-
-  sk_paragraph_style_new: {
-    parameters: [],
-    result: "pointer",
-  },
-  sk_paragraph_style_set_text_style: {
-    parameters: ["pointer", "pointer"],
-    result: "void",
-  },
-  sk_paragraph_style_delete: {
-    parameters: ["pointer"],
-    result: "void",
-  },
-
-  // --- Paragraph builder ---
-
-  sk_paragraph_builder_new: {
-    parameters: ["pointer", "pointer"],
-    result: "pointer",
-  },
-  sk_paragraph_builder_push_style: {
-    parameters: ["pointer", "pointer"],
-    result: "void",
-  },
-  sk_paragraph_builder_add_text: {
-    parameters: ["pointer", "buffer", "usize"],
-    result: "void",
-  },
-  sk_paragraph_builder_build: {
-    parameters: ["pointer"],
-    result: "pointer",
-  },
-  sk_paragraph_builder_delete: {
-    parameters: ["pointer"],
-    result: "void",
-  },
-
-  // --- Paragraph ---
-
-  sk_paragraph_layout: {
-    parameters: ["pointer", "f32"],
-    result: "void",
-  },
-  sk_paragraph_get_height: {
-    parameters: ["pointer"],
-    result: "f32",
-  },
-  sk_paragraph_paint: {
-    parameters: ["pointer", "pointer", "f32", "f32"],
-    result: "void",
   },
 });
 
@@ -431,7 +327,7 @@ export function setOnMouseDown(
   handler: MouseHandler,
 ): MouseCb {
   const cb = makeMouseCb(handler);
-  lib.symbols.window_set_on_mouse_down(win, cb.pointer);
+  winLib.symbols.window_set_on_mouse_down(win, cb.pointer);
   return cb;
 }
 
@@ -440,7 +336,7 @@ export function setOnMouseUp(
   handler: MouseHandler,
 ): MouseCb {
   const cb = makeMouseCb(handler);
-  lib.symbols.window_set_on_mouse_up(win, cb.pointer);
+  winLib.symbols.window_set_on_mouse_up(win, cb.pointer);
   return cb;
 }
 
@@ -449,7 +345,7 @@ export function setOnMouseMove(
   handler: MouseHandler,
 ): MouseCb {
   const cb = makeMouseCb(handler);
-  lib.symbols.window_set_on_mouse_move(win, cb.pointer);
+  winLib.symbols.window_set_on_mouse_move(win, cb.pointer);
   return cb;
 }
 
@@ -478,7 +374,7 @@ export function setOnKeyDown(
   handler: KeyHandler,
 ): KeyCb {
   const cb = makeKeyCb(handler);
-  lib.symbols.window_set_on_key_down(win, cb.pointer);
+  winLib.symbols.window_set_on_key_down(win, cb.pointer);
   return cb;
 }
 
@@ -487,7 +383,7 @@ export function setOnKeyUp(
   handler: KeyHandler,
 ): KeyCb {
   const cb = makeKeyCb(handler);
-  lib.symbols.window_set_on_key_up(win, cb.pointer);
+  winLib.symbols.window_set_on_key_up(win, cb.pointer);
   return cb;
 }
 
@@ -496,7 +392,7 @@ export function setOnWindowClose(
   handler: () => void,
 ): VoidCb {
   const cb = new Deno.UnsafeCallback(VOID_CB_DEF, handler);
-  lib.symbols.window_set_on_window_close(win, cb.pointer);
+  winLib.symbols.window_set_on_window_close(win, cb.pointer);
   return cb;
 }
 
@@ -505,7 +401,7 @@ export function setOnWindowResize(
   handler: (width: number, height: number) => void,
 ): ResizeCb {
   const cb = new Deno.UnsafeCallback(RESIZE_CB_DEF, handler);
-  lib.symbols.window_set_on_window_resize(win, cb.pointer);
+  winLib.symbols.window_set_on_window_resize(win, cb.pointer);
   return cb;
 }
 
@@ -514,12 +410,12 @@ export function setOnRender(
   handler: () => void,
 ): VoidCb {
   const cb = new Deno.UnsafeCallback(VOID_CB_DEF, handler);
-  lib.symbols.window_set_on_render(win, cb.pointer);
+  winLib.symbols.window_set_on_render(win, cb.pointer);
   return cb;
 }
 
 export function windowRun(win: Deno.PointerValue): void {
-  lib.symbols.window_run(win);
+  winLib.symbols.window_run(win);
 }
 
 // ---------------------------------------------------------------------------
@@ -544,18 +440,18 @@ function encodeUtf8(s: string): Uint8Array<ArrayBuffer> {
   return asFfiBuffer(encoded);
 }
 
-export function decodeUtf8(bytes: Uint8Array): string {
+function decodeUtf8(bytes: Uint8Array): string {
   return utf8Decoder.decode(bytes);
 }
 
 export function getWindowTitle(win: Deno.PointerValue): string {
   const initial = new Uint8Array(256);
-  const totalLen = Number(lib.symbols.window_get_title(win, initial, 256n));
+  const totalLen = Number(winLib.symbols.window_get_title(win, initial, 256n));
   if (totalLen <= initial.length) {
     return decodeUtf8(initial.subarray(0, totalLen));
   }
   const exact = new Uint8Array(totalLen);
-  lib.symbols.window_get_title(win, exact, BigInt(exact.length));
+  winLib.symbols.window_get_title(win, exact, BigInt(exact.length));
   return decodeUtf8(exact);
 }
 
@@ -565,7 +461,7 @@ export function createWindow(
   title: string,
 ): Deno.PointerValue {
   const titleBytes = encodeUtf8(title);
-  return lib.symbols.window_create(
+  return winLib.symbols.window_create(
     width,
     height,
     titleBytes,
@@ -575,41 +471,5 @@ export function createWindow(
 
 export function setWindowTitle(win: Deno.PointerValue, title: string): void {
   const titleBytes = encodeUtf8(title);
-  lib.symbols.window_set_title(win, titleBytes, BigInt(titleBytes.length));
-}
-
-export function skStringNew(s: string): Deno.PointerValue {
-  const bytes = encodeUtf8(s);
-  return lib.symbols.sk_string_new(bytes, BigInt(bytes.length));
-}
-
-export function paragraphBuilderAddText(
-  builder: Deno.PointerValue,
-  text: string,
-): void {
-  paragraphBuilderAddUtf8(builder, encodeUtf8(text));
-}
-
-export function paragraphBuilderAddUtf8(
-  builder: Deno.PointerValue,
-  utf8: Uint8Array,
-): void {
-  const bytes = asFfiBuffer(utf8);
-  lib.symbols.sk_paragraph_builder_add_text(
-    builder,
-    bytes,
-    BigInt(bytes.length),
-  );
-}
-
-export function pointerArrayBuffer(
-  ptrs: Deno.PointerValue[],
-): Uint8Array<ArrayBuffer> {
-  const ab = new ArrayBuffer(8 * ptrs.length);
-  const view = new DataView(ab);
-  for (let i = 0; i < ptrs.length; i++) {
-    const p = Deno.UnsafePointer.value(ptrs[i]);
-    view.setBigUint64(i * 8, BigInt(p), true);
-  }
-  return new Uint8Array(ab);
+  winLib.symbols.window_set_title(win, titleBytes, BigInt(titleBytes.length));
 }

@@ -1,10 +1,11 @@
 /**
  * main.ts — Deno entry point.
  *
- * Creates an NSWindow (via FFI -> libskiawindow.dylib), registers event
- * callbacks, and enters NSApp.run() which drives the native event loop.
+ * Creates an NSWindow (via FFI -> libWindow.dylib), sets up a Skia GPU
+ * context (via FFI -> libCSkia.dylib), registers event callbacks, and
+ * enters NSApp.run() which drives the native event loop.
  *
- * Build the dylib first:
+ * Build the dylibs first:
  *   swift build -c release
  *
  * Run:
@@ -12,12 +13,20 @@
  */
 
 import {
-  createWindow,
-  type Modifiers,
-  lib,
+  skLib,
+  createGrContext,
+  createBackendRenderTarget,
+  GR_SURFACE_ORIGIN_TOP_LEFT,
+  SK_COLOR_TYPE_BGRA_8888,
+  skStringNew,
   paragraphBuilderAddText,
   pointerArrayBuffer,
-  skStringNew,
+} from "./capi/binding.ts";
+
+import {
+  winLib,
+  createWindow,
+  type Modifiers,
   setOnMouseDown,
   setOnMouseUp,
   setOnMouseMove,
@@ -27,7 +36,7 @@ import {
   setOnWindowResize,
   setOnRender,
   windowRun,
-} from "./binding.ts";
+} from "./window/binding.ts";
 
 const eventLogs: string[] = [];
 
@@ -45,43 +54,43 @@ function onRender(
   height: number,
   scale: number,
 ): void {
-  const { symbols } = lib;
+  const sk = skLib.symbols;
 
-  symbols.sk_canvas_clear(canvasPtr, 0xff1e1e2e);
+  sk.sk_canvas_clear(canvasPtr, 0xff1e1e2e);
 
-  const fontCollection = symbols.sk_font_collection_new();
-  const fontMgr = symbols.sk_fontmgr_ref_default();
-  symbols.sk_font_collection_set_default_font_manager(fontCollection, fontMgr);
+  const fontCollection = sk.sk_font_collection_new();
+  const fontMgr = sk.sk_fontmgr_ref_default();
+  sk.sk_font_collection_set_default_font_manager(fontCollection, fontMgr);
 
-  const textStyle = symbols.sk_text_style_create();
-  symbols.sk_text_style_set_color(textStyle, 0xffcdd6f4);
-  symbols.sk_text_style_set_font_size(textStyle, 24.0 * scale);
+  const textStyle = sk.sk_text_style_create();
+  sk.sk_text_style_set_color(textStyle, 0xffcdd6f4);
+  sk.sk_text_style_set_font_size(textStyle, 24.0 * scale);
 
   const familyNamePtr = skStringNew("Helvetica Neue");
   const familiesArray = pointerArrayBuffer([familyNamePtr]);
-  symbols.sk_text_style_set_font_families(textStyle, familiesArray, 1n);
+  sk.sk_text_style_set_font_families(textStyle, familiesArray, 1n);
 
-  const paraStyle = symbols.sk_paragraph_style_new();
-  symbols.sk_paragraph_style_set_text_style(paraStyle, textStyle);
+  const paraStyle = sk.sk_paragraph_style_new();
+  sk.sk_paragraph_style_set_text_style(paraStyle, textStyle);
 
-  const builder = symbols.sk_paragraph_builder_new(paraStyle, fontCollection);
-  symbols.sk_paragraph_builder_push_style(builder, textStyle);
+  const builder = sk.sk_paragraph_builder_new(paraStyle, fontCollection);
+  sk.sk_paragraph_builder_push_style(builder, textStyle);
 
   const text = eventLogs.length > 0 ? eventLogs.join("\n") : "(no events yet)";
   paragraphBuilderAddText(builder, text);
 
-  const paragraph = symbols.sk_paragraph_builder_build(builder);
+  const paragraph = sk.sk_paragraph_builder_build(builder);
 
-  symbols.sk_paragraph_layout(paragraph, width);
-  const paraHeight = symbols.sk_paragraph_get_height(paragraph);
+  sk.sk_paragraph_layout(paragraph, width);
+  const paraHeight = sk.sk_paragraph_get_height(paragraph);
   const y = (height - paraHeight) * 0.5;
 
-  symbols.sk_paragraph_paint(paragraph, canvasPtr, 24.0 * scale, y);
+  sk.sk_paragraph_paint(paragraph, canvasPtr, 24.0 * scale, y);
 
-  symbols.sk_paragraph_builder_delete(builder);
-  symbols.sk_paragraph_style_delete(paraStyle);
-  symbols.sk_string_delete(familyNamePtr);
-  symbols.sk_font_collection_unref(fontCollection);
+  sk.sk_paragraph_builder_delete(builder);
+  sk.sk_paragraph_style_delete(paraStyle);
+  sk.sk_string_delete(familyNamePtr);
+  sk.sk_font_collection_unref(fontCollection);
 }
 
 function formatMods(mods: Modifiers): string {
@@ -89,8 +98,20 @@ function formatMods(mods: Modifiers): string {
   return `{ctrlKey:${ctrlKey},shiftKey:${shiftKey},altKey:${altKey},metaKey:${metaKey}}`;
 }
 
+// ---------------------------------------------------------------------------
+// Setup
+// ---------------------------------------------------------------------------
+
 const win = createWindow(800, 500, "Skia Metal Demo");
-lib.symbols.window_show(win);
+winLib.symbols.window_show(win);
+
+const device = winLib.symbols.window_get_metal_device(win);
+const queue = winLib.symbols.window_get_metal_queue(win);
+const grContext = createGrContext(device, queue);
+
+// ---------------------------------------------------------------------------
+// Event handlers
+// ---------------------------------------------------------------------------
 
 setOnMouseDown(win, (mods, button, x, y) => {
   log(`mouseDown x=${x} y=${y} button=${button} mods=${formatMods(mods)}`);
@@ -125,19 +146,41 @@ setOnWindowResize(win, (width, height) => {
 });
 
 setOnRender(win, () => {
-  const canvas = lib.symbols.window_begin_frame(win);
-  if (canvas) {
+  const texture = winLib.symbols.window_begin_frame(win);
+  if (texture) {
     try {
-      const w = lib.symbols.window_get_width(win) as number;
-      const h = lib.symbols.window_get_height(win) as number;
-      const scale = lib.symbols.window_get_scale(win) as number;
-      onRender(canvas, w, h, scale);
+      const w = winLib.symbols.window_get_width(win) as number;
+      const h = winLib.symbols.window_get_height(win) as number;
+      const scale = winLib.symbols.window_get_scale(win) as number;
+
+      const target = createBackendRenderTarget(w, h, texture);
+      const surface = skLib.symbols.sk_surface_new_backend_render_target(
+        grContext,
+        target,
+        GR_SURFACE_ORIGIN_TOP_LEFT,
+        SK_COLOR_TYPE_BGRA_8888,
+        null,
+        null,
+      );
+      if (surface) {
+        const canvas = skLib.symbols.sk_surface_get_canvas(surface);
+        onRender(canvas, w, h, scale);
+        skLib.symbols.gr_direct_context_flush_and_submit(grContext, false);
+        skLib.symbols.sk_surface_unref(surface);
+      }
+      skLib.symbols.gr_backendrendertarget_delete(target);
     } finally {
-      lib.symbols.window_end_frame(win);
+      winLib.symbols.window_end_frame(win);
     }
   }
 });
 
+// ---------------------------------------------------------------------------
+// Run
+// ---------------------------------------------------------------------------
+
 windowRun(win);
 
-lib.symbols.window_destroy(win);
+skLib.symbols.gr_direct_context_release_resources_and_abandon_context(grContext);
+skLib.symbols.gr_direct_context_delete(grContext);
+winLib.symbols.window_destroy(win);

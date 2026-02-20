@@ -6,6 +6,7 @@
  *   window_set_on_mouse_down / window_set_on_mouse_up / window_set_on_mouse_move
  *   window_set_on_key_down / window_set_on_key_up
  *   window_set_on_window_close / window_set_on_window_resize / window_set_on_render
+ *   window_get_metal_device / window_get_metal_queue
  *   window_begin_frame / window_end_frame / window_get_scale
  *   window_set_title / window_set_width / window_set_height
  *   window_set_close_button_visible / window_set_miniaturize_button_visible / window_set_zoom_button_visible
@@ -62,7 +63,7 @@ private let KEY_KIND_F10: Int32 = 37
 private let KEY_KIND_F11: Int32 = 38
 private let KEY_KIND_F12: Int32 = 39
 
-// MARK: - Event data helpers (module-internal, used by SkiaMetalView)
+// MARK: - Event data helpers (module-internal, used by MetalView)
 
 func modifierBits(from flags: NSEvent.ModifierFlags) -> UInt32 {
     var bits: UInt32 = 0
@@ -194,14 +195,14 @@ public func windowCreate(
     nsWin.title = titleStr
     nsWin.center()
 
-    let view = SkiaMetalView(frame: frame)
+    let view = MetalView(frame: frame)
     nsWin.contentView = view
 
     let delegate = WindowDelegate()
     nsWin.delegate = delegate
     app.delegate   = delegate
 
-    let state = WindowState(window: nsWin, skiaView: view, delegate: delegate)
+    let state = WindowState(window: nsWin, metalView: view, delegate: delegate)
     view.state    = state
     delegate.state = state
 
@@ -213,13 +214,13 @@ public func windowShow(_ win: UnsafeMutableRawPointer?) {
     guard let win else { return }
     let s = stateFrom(win)
     s.window.makeKeyAndOrderFront(nil)
-    s.window.makeFirstResponder(s.skiaView)
+    s.window.makeFirstResponder(s.metalView)
     if !appDidFinishLaunching {
         NSApp.finishLaunching()
         appDidFinishLaunching = true
     }
     NSApp.activate(ignoringOtherApps: true)
-    s.skiaView.startDisplayLink()
+    s.metalView.startDisplayLink()
 }
 
 @_cdecl("window_run")
@@ -284,18 +285,34 @@ public func windowSetOnRender(_ win: UnsafeMutableRawPointer?, _ cb: VoidCallbac
     stateFrom(win).onRender = cb
 }
 
+// MARK: - Metal resources
+
+@_cdecl("window_get_metal_device")
+public func windowGetMetalDevice(_ win: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer? {
+    guard let win else { return nil }
+    let dev = stateFrom(win).metalView.metalDevice as AnyObject
+    return Unmanaged.passUnretained(dev).toOpaque()
+}
+
+@_cdecl("window_get_metal_queue")
+public func windowGetMetalQueue(_ win: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer? {
+    guard let win else { return nil }
+    let queue = stateFrom(win).metalView.commandQueue as AnyObject
+    return Unmanaged.passUnretained(queue).toOpaque()
+}
+
 // MARK: - Frame
 
 @_cdecl("window_begin_frame")
-public func windowBeginFrame(_ win: UnsafeMutableRawPointer?) -> OpaquePointer? {
+public func windowBeginFrame(_ win: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer? {
     guard let win else { return nil }
-    return stateFrom(win).skiaView.beginFrame()
+    return stateFrom(win).metalView.beginFrame()
 }
 
 @_cdecl("window_end_frame")
 public func windowEndFrame(_ win: UnsafeMutableRawPointer?) {
     guard let win else { return }
-    stateFrom(win).skiaView.endFrame()
+    stateFrom(win).metalView.endFrame()
 }
 
 @_cdecl("window_get_scale")
@@ -377,13 +394,13 @@ public func windowGetTitle(_ win: UnsafeMutableRawPointer?, _ buf: UnsafeMutable
 @_cdecl("window_get_width")
 public func windowGetWidth(_ win: UnsafeMutableRawPointer?) -> Int32 {
     guard let win else { return 0 }
-    return stateFrom(win).skiaView.drawableWidth
+    return stateFrom(win).metalView.drawableWidth
 }
 
 @_cdecl("window_get_height")
 public func windowGetHeight(_ win: UnsafeMutableRawPointer?) -> Int32 {
     guard let win else { return 0 }
-    return stateFrom(win).skiaView.drawableHeight
+    return stateFrom(win).metalView.drawableHeight
 }
 
 @_cdecl("window_get_close_button_visible")

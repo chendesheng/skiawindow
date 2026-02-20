@@ -1,8 +1,8 @@
 /*
- * window.swift — Core types and delegates for NSWindow + Metal + Skia.
+ * window.swift — Core types and delegates for NSWindow + Metal.
  *
  * See window_api.swift for the C API (@_cdecl exports).
- * See skia_metal_view.swift for the SkiaMetalView class.
+ * See metal_view.swift for the MetalView class.
  */
 
 import Cocoa
@@ -20,7 +20,7 @@ public typealias ResizeCallback   = @convention(c) (Int32, Int32) -> Void
 
 final class WindowState {
     let window:   NSWindow
-    let skiaView: SkiaMetalView
+    let metalView: MetalView
     let delegate: WindowDelegate
 
     var onMouseDown: MouseCallback?
@@ -32,10 +32,10 @@ final class WindowState {
     var onWindowResize: ResizeCallback?
     var onRender: VoidCallback?
 
-    init(window: NSWindow, skiaView: SkiaMetalView, delegate: WindowDelegate) {
-        self.window   = window
-        self.skiaView = skiaView
-        self.delegate = delegate
+    init(window: NSWindow, metalView: MetalView, delegate: WindowDelegate) {
+        self.window    = window
+        self.metalView = metalView
+        self.delegate  = delegate
     }
 }
 
@@ -47,7 +47,7 @@ final class WindowDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     func windowWillClose(_ notification: Notification) {
-        state?.skiaView.stopDisplayLink()
+        state?.metalView.stopDisplayLink()
         state?.onWindowClose?()
 
         NSApp.stop(nil)
