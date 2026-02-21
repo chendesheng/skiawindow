@@ -7,9 +7,8 @@ final class WindowTests: XCTestCase {
     override func setUp() {
         super.setUp()
         continueAfterFailure = false
-        let root = "/Users/chendesheng/Sources/cskia"
+        let root = SnapshotHelper.projectRoot
         app = XCUIApplication()
-        app.launchEnvironment["CSKIA_ROOT"] = root
         app.launchArguments = [
             "run", "--allow-ffi", "--allow-read", "--allow-env", "--unstable-ffi",
             root + "/tests/apps/color_app.ts",

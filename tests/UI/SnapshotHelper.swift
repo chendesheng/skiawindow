@@ -5,8 +5,9 @@ import SnapshotTesting
 enum SnapshotHelper {
 
     static let projectRoot: String = {
-        ProcessInfo.processInfo.environment["CSKIA_ROOT"]
-            ?? "/Users/chendesheng/Sources/cskia"
+        var url = URL(fileURLWithPath: #filePath)
+        for _ in 0..<3 { url.deleteLastPathComponent() }
+        return url.path
     }()
 
     static let baselineDir: String = {

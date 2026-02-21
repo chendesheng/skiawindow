@@ -48,5 +48,3 @@ schemes:
     test:
       targets:
         - TestAppUITests
-      environmentVariables:
-        CSKIA_ROOT: /Users/chendesheng/Sources/cskia

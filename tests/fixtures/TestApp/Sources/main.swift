@@ -1,13 +1,19 @@
 import Foundation
 
-let projectRoot = ProcessInfo.processInfo.environment["CSKIA_ROOT"]
-    ?? "/Users/chendesheng/Sources/cskia"
+let projectRoot: String = {
+    var url = URL(fileURLWithPath: #filePath)
+    for _ in 0..<5 { url.deleteLastPathComponent() }
+    return url.path
+}()
 
 let args = CommandLine.arguments.dropFirst()
-let deno = "/opt/homebrew/bin/deno"
-let cArgs = ([deno] + args).map { strdup($0) } + [nil]
+let cArgs = (["deno"] + args).map { strdup($0) } + [nil]
+
+var path = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+path = "/opt/homebrew/bin:/usr/local/bin:" + path
+setenv("PATH", path, 1)
 
 chdir(projectRoot)
-execv(deno, cArgs)
-perror("execv failed")
+execvp("deno", cArgs)
+perror("execvp failed")
 exit(1)
