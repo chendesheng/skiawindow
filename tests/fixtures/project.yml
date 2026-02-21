@@ -1,0 +1,52 @@
+name: CSkiaTests
+options:
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "15.0"
+
+packages:
+  SnapshotTesting:
+    url: https://github.com/pointfreeco/swift-snapshot-testing
+    exactVersion: "1.16.2"
+
+targets:
+  TestApp:
+    type: application
+    platform: macOS
+    sources:
+      - TestApp/Sources
+    info:
+      path: TestApp/Info.plist
+    settings:
+      base:
+        CODE_SIGN_IDENTITY: "-"
+        PRODUCT_BUNDLE_IDENTIFIER: com.cskia.testapp
+        PRODUCT_NAME: TestApp
+
+  TestAppUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - ../UI
+    dependencies:
+      - target: TestApp
+      - package: SnapshotTesting
+    settings:
+      base:
+        CODE_SIGN_IDENTITY: "-"
+        GENERATE_INFOPLIST_FILE: "YES"
+        ENABLE_APP_SANDBOX: "NO"
+        TEST_TARGET_NAME: TestApp
+        PRODUCT_BUNDLE_IDENTIFIER: com.cskia.testapp.uitests
+
+schemes:
+  TestAppUITests:
+    build:
+      targets:
+        TestApp: all
+        TestAppUITests: [test]
+    test:
+      targets:
+        - TestAppUITests
+      environmentVariables:
+        CSKIA_ROOT: /Users/chendesheng/Sources/cskia

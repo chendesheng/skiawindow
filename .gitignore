@@ -1,3 +1,4 @@
+/skia
 /dist
 .DS_Store
 *.o
@@ -5,3 +6,4 @@
 demo
 .build
 tests/__snapshots_output__/
+*.xcodeproj/

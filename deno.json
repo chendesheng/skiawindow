@@ -2,6 +2,8 @@
   "tasks": {
     "build": "swift build -c release",
     "test": "deno task build && deno test --allow-ffi --allow-read --allow-write --unstable-ffi tests/",
-    "test:update": "deno task build && deno test --allow-ffi --allow-read --allow-write --unstable-ffi tests/ -- --update"
+    "test:update": "deno task build && deno test --allow-ffi --allow-read --allow-write --unstable-ffi tests/ -- --update",
+    "test:ui": "SNAP_DIR=~/Library/Containers/com.cskia.testapp.uitests.xctrunner/Data/tmp/cskia_snapshots; rm -f \"$SNAP_DIR\"/*_FAIL.png 2>/dev/null; xcodegen generate --spec tests/fixtures/project.yml && xcodebuild test -project tests/fixtures/CSkiaTests.xcodeproj -scheme TestAppUITests -destination 'platform=macOS'; rc=$?; rm -rf tests/__snapshots_output__; mkdir -p tests/__snapshots_output__; cp \"$SNAP_DIR\"/*_FAIL.png tests/__snapshots_output__/ 2>/dev/null; exit $rc",
+    "test:ui:update": "rm -f tests/__snapshots__/test*.png && deno task test:ui; SNAP_DIR=~/Library/Containers/com.cskia.testapp.uitests.xctrunner/Data/tmp/cskia_snapshots && for f in \"$SNAP_DIR\"/test*.png; do case \"$f\" in *_FAIL.png) ;; *) cp \"$f\" tests/__snapshots__/ ;; esac; done && echo 'Baselines updated.'"
   }
 }
