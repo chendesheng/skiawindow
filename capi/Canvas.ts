@@ -19,4 +19,9 @@ export class Canvas {
   drawParagraph(p: Paragraph, x: number, y: number): void {
     sk.sk_paragraph_paint(p._ptr, this.#ptr, x, y);
   }
+
+  drawPath(path: any, paint: any): void {
+    // For now, accept any since Paint is not fully typed yet
+    sk.sk_canvas_draw_path(this.#ptr, path._ptr, paint._ptr);
+  }
 }

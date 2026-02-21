@@ -1934,6 +1934,178 @@ void sk_paint_set_style(sk_paint_t *cpaint, sk_paint_style_t style) {
 }
 
 // ===== Functions from include/core/SkPath.h =====
+static const int SK_PATH_CMD_MOVE = 0;
+static const int SK_PATH_CMD_LINE = 1;
+static const int SK_PATH_CMD_QUAD = 2;
+static const int SK_PATH_CMD_CONIC = 3;
+static const int SK_PATH_CMD_CUBIC = 4;
+static const int SK_PATH_CMD_CLOSE = 5;
+
+void sk_path_cmds_delete(sk_path_cmds_t *cmds) {
+  if (cmds) {
+    if (cmds->cmds) {
+      delete[] cmds->cmds;
+    }
+    delete cmds;
+  }
+}
+
+sk_path_cmds_t *sk_path_to_cmds(const sk_path_t *cpath) {
+  const SkPath& path = *reinterpret_cast<const SkPath *>(cpath);
+  std::vector<float> cmds;
+  SkPath::Iter iter(path, false);
+  SkPoint pts[4];
+  SkPath::Verb verb;
+  while ((verb = iter.next(pts)) != SkPath::kDone_Verb) {
+      switch (verb) {
+      case SkPath::kMove_Verb:
+          cmds.insert(cmds.end(), {(float)SK_PATH_CMD_MOVE, pts[0].x(), pts[0].y()});
+          break;
+      case SkPath::kLine_Verb:
+          cmds.insert(cmds.end(), {(float)SK_PATH_CMD_LINE, pts[1].x(), pts[1].y()});
+          break;
+      case SkPath::kQuad_Verb:
+          cmds.insert(cmds.end(), {(float)SK_PATH_CMD_QUAD, pts[1].x(), pts[1].y(), pts[2].x(), pts[2].y()});
+          break;
+      case SkPath::kConic_Verb:
+          cmds.insert(cmds.end(), {(float)SK_PATH_CMD_CONIC,
+                         pts[1].x(), pts[1].y(),
+                         pts[2].x(), pts[2].y(), iter.conicWeight()});
+          break;
+      case SkPath::kCubic_Verb:
+          cmds.insert(cmds.end(), {(float)SK_PATH_CMD_CUBIC,
+                         pts[1].x(), pts[1].y(),
+                         pts[2].x(), pts[2].y(),
+                         pts[3].x(), pts[3].y()});
+          break;
+      case SkPath::kClose_Verb:
+          cmds.push_back((float)SK_PATH_CMD_CLOSE);
+          break;
+      case SkPath::kDone_Verb:
+          break;
+      }
+  }
+  sk_path_cmds_t* result = new sk_path_cmds_t();
+  result->size = cmds.size();
+  result->cmds = new float[cmds.size()];
+  std::copy(cmds.begin(), cmds.end(), result->cmds);
+  return result;
+}
+
+bool sk_path_make_from_cmds(const float *cmds, int num_cmds, sk_path_t *result) {
+  SkPath* path = reinterpret_cast<SkPath*>(result);
+  float x1, y1, x2, y2, x3, y3;
+
+  #define CHECK_NUM_ARGS(n) \
+      if ((i + n) > num_cmds) { \
+          return false; \
+      }
+
+  for(int i = 0; i < num_cmds;){
+       switch ((int)(cmds[i++])) {
+          case SK_PATH_CMD_MOVE:
+              CHECK_NUM_ARGS(2)
+              x1 = cmds[i++]; y1 = cmds[i++];
+              path->moveTo(x1, y1);
+              break;
+          case SK_PATH_CMD_LINE:
+              CHECK_NUM_ARGS(2)
+              x1 = cmds[i++]; y1 = cmds[i++];
+              path->lineTo(x1, y1);
+              break;
+          case SK_PATH_CMD_QUAD:
+              CHECK_NUM_ARGS(4)
+              x1 = cmds[i++]; y1 = cmds[i++];
+              x2 = cmds[i++]; y2 = cmds[i++];
+              path->quadTo(x1, y1, x2, y2);
+              break;
+          case SK_PATH_CMD_CONIC:
+              CHECK_NUM_ARGS(5)
+              x1 = cmds[i++]; y1 = cmds[i++];
+              x2 = cmds[i++]; y2 = cmds[i++];
+              x3 = cmds[i++]; // weight
+              path->conicTo(x1, y1, x2, y2, x3);
+              break;
+          case SK_PATH_CMD_CUBIC:
+              CHECK_NUM_ARGS(6)
+              x1 = cmds[i++]; y1 = cmds[i++];
+              x2 = cmds[i++]; y2 = cmds[i++];
+              x3 = cmds[i++]; y3 = cmds[i++];
+              path->cubicTo(x1, y1, x2, y2, x3, y3);
+              break;
+          case SK_PATH_CMD_CLOSE:
+              path->close();
+              break;
+          default:
+              return false;
+      }
+  }
+
+  #undef CHECK_NUM_ARGS
+  return true;
+}
+
+bool sk_path_make_from_verbs_points_weights(
+    const uint8_t *verbs, int num_verbs, const float *pts, int num_pts,
+    const float *weights, int num_weights, sk_path_t *result) {
+  SkPath* path = reinterpret_cast<SkPath*>(result);
+
+  #define CHECK_NUM_POINTS(n) \
+      if ((ptIdx + n) > num_pts) { \
+          return false; \
+      }
+  #define CHECK_NUM_WEIGHTS(n) \
+      if ((wtIdx + n) > num_weights) { \
+          return false; \
+      }
+
+  path->incReserve(num_pts);
+  int ptIdx = 0;
+  int wtIdx = 0;
+  for (int v = 0; v < num_verbs; ++v) {
+       switch (verbs[v]) {
+            case SK_PATH_CMD_MOVE:
+                CHECK_NUM_POINTS(2)
+                path->moveTo(pts[ptIdx], pts[ptIdx+1]);
+                ptIdx += 2;
+                break;
+            case SK_PATH_CMD_LINE:
+                CHECK_NUM_POINTS(2)
+                path->lineTo(pts[ptIdx], pts[ptIdx+1]);
+                ptIdx += 2;
+                break;
+            case SK_PATH_CMD_QUAD:
+                CHECK_NUM_POINTS(4)
+                path->quadTo(pts[ptIdx], pts[ptIdx+1], pts[ptIdx+2], pts[ptIdx+3]);
+                ptIdx += 4;
+                break;
+            case SK_PATH_CMD_CONIC:
+                CHECK_NUM_POINTS(4)
+                CHECK_NUM_WEIGHTS(1)
+                path->conicTo(pts[ptIdx], pts[ptIdx+1], pts[ptIdx+2], pts[ptIdx+3],
+                             weights[wtIdx]);
+                ptIdx += 4;
+                wtIdx++;
+                break;
+            case SK_PATH_CMD_CUBIC:
+                CHECK_NUM_POINTS(6)
+                path->cubicTo(pts[ptIdx  ], pts[ptIdx+1],
+                             pts[ptIdx+2], pts[ptIdx+3],
+                             pts[ptIdx+4], pts[ptIdx+5]);
+                ptIdx += 6;
+                break;
+            case SK_PATH_CMD_CLOSE:
+                path->close();
+                break;
+            default:
+                return false;
+      }
+  }
+  #undef CHECK_NUM_POINTS
+  #undef CHECK_NUM_WEIGHTS
+  return true;
+}
+
 void sk_path_add_circle(sk_path_t *cpath, float x, float y, float radius,
                         sk_path_direction_t dir) {
   reinterpret_cast<SkPath *>(cpath)->addCircle(x, y, radius,
@@ -2089,6 +2261,11 @@ void sk_path_quad_to(sk_path_t *cpath, float x0, float y0, float x1, float y1) {
   reinterpret_cast<SkPath *>(cpath)->quadTo(x0, y0, x1, y1);
 }
 
+void sk_path_rquad_to(sk_path_t *cpath, float dx0, float dy0, float dx1,
+                      float dy1) {
+  reinterpret_cast<SkPath *>(cpath)->rQuadTo(dx0, dy0, dx1, dy1);
+}
+
 void sk_path_rarc_to(sk_path_t *cpath, float rx, float ry, float xAxisRotate,
                      sk_path_arc_size_t largeArc, sk_path_direction_t sweep,
                      float x, float y) {
@@ -2143,6 +2320,66 @@ void sk_path_transform_to_dest(const sk_path_t *cpath,
                                sk_path_t *destination) {
   reinterpret_cast<const SkPath *>(cpath)->transform(
       AsMatrix(cmatrix), reinterpret_cast<SkPath *>(destination));
+}
+
+bool sk_path_equals(const sk_path_t *cpath, const sk_path_t *other) {
+  return *reinterpret_cast<const SkPath *>(cpath) == *reinterpret_cast<const SkPath *>(other);
+}
+
+bool sk_path_is_volatile(const sk_path_t *cpath) {
+  return reinterpret_cast<const SkPath *>(cpath)->isVolatile();
+}
+
+void sk_path_set_is_volatile(sk_path_t *cpath, bool is_volatile) {
+  reinterpret_cast<SkPath *>(cpath)->setIsVolatile(is_volatile);
+}
+
+void sk_path_offset(sk_path_t *cpath, float dx, float dy) {
+  reinterpret_cast<SkPath *>(cpath)->offset(dx, dy);
+}
+
+void sk_path_get_point(const sk_path_t *cpath, int index, sk_point_t *point) {
+  *reinterpret_cast<SkPoint *>(point) = reinterpret_cast<const SkPath *>(cpath)->getPoint(index);
+}
+
+bool sk_path_is_convex(const sk_path_t *cpath) {
+  return reinterpret_cast<const SkPath *>(cpath)->isConvex();
+}
+
+bool sk_path_is_oval(const sk_path_t *cpath, sk_rect_t *bounds) {
+  return reinterpret_cast<const SkPath *>(cpath)->isOval(reinterpret_cast<SkRect *>(bounds));
+}
+
+bool sk_path_is_rrect(const sk_path_t *cpath, sk_rrect_t *rrect) {
+  return reinterpret_cast<const SkPath *>(cpath)->isRRect(reinterpret_cast<SkRRect *>(rrect));
+}
+
+bool sk_path_is_rect(const sk_path_t *cpath, sk_rect_t *rect, bool *is_closed, sk_path_direction_t *direction) {
+  return reinterpret_cast<const SkPath *>(cpath)->isRect(reinterpret_cast<SkRect *>(rect), is_closed, reinterpret_cast<SkPathDirection *>(direction));
+}
+
+bool sk_path_is_line(const sk_path_t *cpath, sk_point_t line[2]) {
+  return reinterpret_cast<const SkPath *>(cpath)->isLine(reinterpret_cast<SkPoint *>(line));
+}
+
+bool sk_path_is_finite(const sk_path_t *cpath) {
+  return reinterpret_cast<const SkPath *>(cpath)->isFinite();
+}
+
+bool sk_path_is_last_contour_closed(const sk_path_t *cpath) {
+  return reinterpret_cast<const SkPath *>(cpath)->isLastContourClosed();
+}
+
+bool sk_path_is_inverse_fill_type(const sk_path_t *cpath) {
+  return reinterpret_cast<const SkPath *>(cpath)->isInverseFillType();
+}
+
+bool sk_path_interpolate(const sk_path_t *cpath, const sk_path_t *ending, float weight, sk_path_t *out) {
+  return reinterpret_cast<const SkPath *>(cpath)->interpolate(*reinterpret_cast<const SkPath *>(ending), weight, reinterpret_cast<SkPath *>(out));
+}
+
+bool sk_path_is_interpolatable(const sk_path_t *cpath, const sk_path_t *compare) {
+  return reinterpret_cast<const SkPath *>(cpath)->isInterpolatable(*reinterpret_cast<const SkPath *>(compare));
 }
 
 // ===== Functions from include/core/SkPathEffect.h =====
@@ -2215,6 +2452,14 @@ void sk_path_effect_unref(sk_path_effect_t *effect) {
   SkSafeUnref(reinterpret_cast<SkPathEffect *>(effect));
 }
 
+bool sk_path_effect_filter_path(sk_path_effect_t *effect,
+                                const sk_path_t *src, sk_path_t *dst,
+                                sk_rect_t *cullRect) {
+  return reinterpret_cast<SkPathEffect *>(effect)->filterPath(
+      reinterpret_cast<SkPath *>(dst), *reinterpret_cast<const SkPath *>(src),
+      nullptr, reinterpret_cast<const SkRect *>(cullRect));
+}
+
 // ===== Functions from include/pathops/SkPathOps.h =====
 bool sk_path_op(const sk_path_t *path, const sk_path_t *other, sk_path_op_t op,
                 sk_path_t *result) {
@@ -2245,6 +2490,10 @@ sk_op_builder_t *sk_opbuilder_new(void) {
 bool sk_opbuilder_resolve(sk_op_builder_t *builder, sk_path_t *result) {
   return reinterpret_cast<SkOpBuilder *>(builder)->resolve(
       reinterpret_cast<SkPath *>(result));
+}
+
+bool sk_path_make_as_winding(const sk_path_t *cpath, sk_path_t *result) {
+  return AsWinding(*reinterpret_cast<const SkPath *>(cpath), reinterpret_cast<SkPath *>(result));
 }
 
 // ===== Functions from include/core/SkShader.h =====

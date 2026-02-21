@@ -93,6 +93,10 @@ typedef struct {
   float bottom;
 } sk_rect_t;
 
+// ===== Types from include/core/SkRRect.h =====
+
+typedef struct sk_rrect_t sk_rrect_t;
+
 // ===== Types from include/core/SkMatrix.h =====
 
 typedef struct {
@@ -120,6 +124,11 @@ typedef enum {
 } sk_path_arc_size_t;
 
 typedef struct sk_path_t sk_path_t;
+
+typedef struct {
+  float *cmds;
+  int size;
+} sk_path_cmds_t;
 
 // ===== Types from include/core/SkPathTypes.h =====
 
@@ -1135,6 +1144,13 @@ SK_C_API void sk_paint_set_stroke_width(sk_paint_t *cpaint, float width);
 SK_C_API void sk_paint_set_style(sk_paint_t *cpaint, sk_paint_style_t style);
 
 // ===== Functions from include/core/SkPath.h =====
+SK_C_API void sk_path_cmds_delete(sk_path_cmds_t *cmds);
+SK_C_API sk_path_cmds_t *sk_path_to_cmds(const sk_path_t *cpath);
+SK_C_API bool sk_path_make_from_cmds(const float *cmds, int num_cmds,
+                                     sk_path_t *result);
+SK_C_API bool sk_path_make_from_verbs_points_weights(
+    const uint8_t *verbs, int num_verbs, const float *pts, int num_pts,
+    const float *weights, int num_weights, sk_path_t *result);
 SK_C_API void sk_path_add_circle(sk_path_t *cpath, float x, float y,
                                  float radius, sk_path_direction_t dir);
 SK_C_API void sk_path_add_oval(sk_path_t *cpath, const sk_rect_t *crect,
@@ -1186,6 +1202,8 @@ SK_C_API sk_path_t *sk_path_new(void);
 SK_C_API bool sk_path_parse_svg_string(sk_path_t *cpath, const char *str);
 SK_C_API void sk_path_quad_to(sk_path_t *cpath, float x0, float y0, float x1,
                               float y1);
+SK_C_API void sk_path_rquad_to(sk_path_t *cpath, float dx0, float dy0,
+                               float dx1, float dy1);
 SK_C_API void sk_path_rarc_to(sk_path_t *cpath, float rx, float ry,
                               float xAxisRotate, sk_path_arc_size_t largeArc,
                               sk_path_direction_t sweep, float x, float y);
@@ -1205,6 +1223,21 @@ SK_C_API void sk_path_transform(sk_path_t *cpath, const sk_matrix_t *cmatrix);
 SK_C_API void sk_path_transform_to_dest(const sk_path_t *cpath,
                                         const sk_matrix_t *cmatrix,
                                         sk_path_t *destination);
+SK_C_API bool sk_path_equals(const sk_path_t *cpath, const sk_path_t *other);
+SK_C_API bool sk_path_is_volatile(const sk_path_t *cpath);
+SK_C_API void sk_path_set_is_volatile(sk_path_t *cpath, bool is_volatile);
+SK_C_API void sk_path_offset(sk_path_t *cpath, float dx, float dy);
+SK_C_API void sk_path_get_point(const sk_path_t *cpath, int index, sk_point_t *point);
+SK_C_API bool sk_path_is_convex(const sk_path_t *cpath);
+SK_C_API bool sk_path_is_oval(const sk_path_t *cpath, sk_rect_t *bounds);
+SK_C_API bool sk_path_is_rrect(const sk_path_t *cpath, sk_rrect_t *rrect);
+SK_C_API bool sk_path_is_rect(const sk_path_t *cpath, sk_rect_t *rect, bool *is_closed, sk_path_direction_t *direction);
+SK_C_API bool sk_path_is_line(const sk_path_t *cpath, sk_point_t line[2]);
+SK_C_API bool sk_path_is_finite(const sk_path_t *cpath);
+SK_C_API bool sk_path_is_last_contour_closed(const sk_path_t *cpath);
+SK_C_API bool sk_path_is_inverse_fill_type(const sk_path_t *cpath);
+SK_C_API bool sk_path_interpolate(const sk_path_t *cpath, const sk_path_t *ending, float weight, sk_path_t *out);
+SK_C_API bool sk_path_is_interpolatable(const sk_path_t *cpath, const sk_path_t *compare);
 
 // ===== Functions from include/core/SkPathEffect.h =====
 SK_C_API sk_path_effect_t *
@@ -1228,6 +1261,9 @@ SK_C_API sk_path_effect_t *
 sk_path_effect_create_trim(float start, float stop,
                            sk_path_effect_trim_mode_t mode);
 SK_C_API void sk_path_effect_unref(sk_path_effect_t *effect);
+SK_C_API bool sk_path_effect_filter_path(sk_path_effect_t *effect,
+                                         const sk_path_t *src, sk_path_t *dst,
+                                         sk_rect_t *cullRect);
 
 // ===== Functions from include/pathops/SkPathOps.h =====
 SK_C_API bool sk_path_op(const sk_path_t *path, const sk_path_t *other,
@@ -1238,6 +1274,7 @@ SK_C_API void sk_opbuilder_add(sk_op_builder_t *builder, const sk_path_t *path,
 SK_C_API void sk_opbuilder_destroy(sk_op_builder_t *builder);
 SK_C_API sk_op_builder_t *sk_opbuilder_new(void);
 SK_C_API bool sk_opbuilder_resolve(sk_op_builder_t *builder, sk_path_t *result);
+SK_C_API bool sk_path_make_as_winding(const sk_path_t *cpath, sk_path_t *result);
 
 // ===== Functions from include/core/SkShader.h =====
 SK_C_API sk_shader_t *sk_shader_new_blend(sk_blend_mode_t mode,
