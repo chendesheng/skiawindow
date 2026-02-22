@@ -89,6 +89,6 @@ win.addEventListener("close", () => {
 });
 
 win.show();
-app.run();
+await app.run();
 
 win.destroy();

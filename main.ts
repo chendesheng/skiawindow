@@ -144,7 +144,7 @@ win.addEventListener("render", (e) => {
 // Run
 // ---------------------------------------------------------------------------
 
-app.run();
+await app.run();
 
 fontCollection.delete();
 grCtx.releaseResourcesAndAbandonContext();

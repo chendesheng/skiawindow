@@ -21,6 +21,14 @@ export const winLib = Deno.dlopen(libPath, {
     parameters: [],
     result: "void",
   },
+  app_finish_launching: {
+    parameters: [],
+    result: "void",
+  },
+  app_poll_events: {
+    parameters: [],
+    result: "void",
+  },
   app_quit: {
     parameters: [],
     result: "void",

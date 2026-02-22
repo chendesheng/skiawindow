@@ -53,7 +53,7 @@ win.addEventListener("render", (e) => {
 
 win.show();
 app.setAppearance("light");
-app.run();
+await app.run();
 
 grCtx.releaseResourcesAndAbandonContext();
 grCtx.delete();

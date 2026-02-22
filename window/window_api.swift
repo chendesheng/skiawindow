@@ -188,6 +188,22 @@ public func appRun() {
     NSApp.run()
 }
 
+private var appLaunched = false
+
+@_cdecl("app_finish_launching")
+public func appFinishLaunching() {
+    if !appLaunched {
+        NSApp.finishLaunching()
+        appLaunched = true
+    }
+}
+
+@_cdecl("app_poll_events")
+public func appPollEvents() {
+    appFinishLaunching()
+    CFRunLoopRunInMode(.defaultMode, 1.0 / 60.0, false)
+}
+
 @_cdecl("app_quit")
 public func appQuit() {
     NSApp.stop(nil)
@@ -557,7 +573,8 @@ public func windowGetResizable(_ win: UnsafeMutableRawPointer?) -> Bool {
 @_cdecl("app_open_link")
 public func appOpenLink(_ url: UnsafePointer<UInt8>?, _ urlLen: Int) {
     guard let urlStr = decodeUtf8(url, urlLen),
-          let url = URL(string: urlStr) else { return }
+        let url = URL(string: urlStr)
+    else { return }
     NSWorkspace.shared.open(url)
 }
 
