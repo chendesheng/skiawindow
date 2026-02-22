@@ -79,6 +79,18 @@ export const skLib = Deno.dlopen(libPath, {
     parameters: ["pointer"],
     result: "void",
   },
+  sk_image_new_from_encoded: {
+    parameters: ["pointer"],
+    result: "pointer",
+  },
+  sk_image_get_width: {
+    parameters: ["pointer"],
+    result: "i32",
+  },
+  sk_image_get_height: {
+    parameters: ["pointer"],
+    result: "i32",
+  },
 
   // --- Image encoding ---
 
@@ -497,6 +509,10 @@ export const skLib = Deno.dlopen(libPath, {
   sk_canvas_draw_points: { parameters: ["pointer", "i32", "usize", "buffer", "pointer"], result: "void" },
   sk_canvas_clip_rect_with_operation: { parameters: ["pointer", "buffer", "i32", "bool"], result: "void" },
   sk_canvas_clip_path_with_operation: { parameters: ["pointer", "pointer", "i32", "bool"], result: "void" },
+  sk_canvas_draw_image_rect: {
+    parameters: ["pointer", "pointer", "buffer", "buffer", "buffer", "pointer", "i32"],
+    result: "void",
+  },
 
   // --- Data ---
 
@@ -587,6 +603,13 @@ export const skLib = Deno.dlopen(libPath, {
   sk_hsv_to_color: {
     parameters: ["u8", "buffer"],
     result: "u32",
+  },
+
+  // --- Image codecs ---
+
+  register_image_codecs: {
+    parameters: [],
+    result: "void",
   },
 });
 

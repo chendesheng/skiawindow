@@ -1,5 +1,6 @@
 import { skLib, toF32Bytes } from "./binding.ts";
 import type { Color4f } from "./Color.ts";
+import type { Image } from "./Image.ts";
 import type { Matrix3x3 } from "./Matrix.ts";
 import type { Paint } from "./Paint.ts";
 import { Path } from "./Path.ts";
@@ -8,6 +9,19 @@ import { rrectGetRect, rrectIsUniform } from "./Rect.ts";
 import type { Rect, RRect } from "./Rect.ts";
 
 const sk = skLib.symbols;
+
+// sk_sampling_options_t: linear filter, no mipmaps (24 bytes)
+const DEFAULT_SAMPLING_OPTIONS = (() => {
+  const ab = new ArrayBuffer(24);
+  const dv = new DataView(ab);
+  dv.setInt32(0, 0, true);       // maxAniso
+  dv.setUint8(4, 0);             // useCubic = false
+  dv.setFloat32(8, 0, true);     // cubic.B
+  dv.setFloat32(12, 0, true);    // cubic.C
+  dv.setInt32(16, 1, true);      // filter = SK_FILTER_MODE_LINEAR
+  dv.setInt32(20, 0, true);      // mipmap = SK_MIPMAP_MODE_NONE
+  return new Uint8Array(ab);
+})();
 
 export class Canvas {
   #ptr: Deno.PointerValue;
@@ -162,5 +176,17 @@ export class Canvas {
 
   drawParagraph(p: Paragraph, x: number, y: number): void {
     sk.sk_paragraph_paint(p._ptr, this.#ptr, x, y);
+  }
+
+  drawImageRect(image: Image, src: Rect, dst: Rect, paint: Paint): void {
+    sk.sk_canvas_draw_image_rect(
+      this.#ptr,
+      image._ptr,
+      toF32Bytes(src),
+      toF32Bytes(dst),
+      DEFAULT_SAMPLING_OPTIONS,
+      paint._ptr,
+      1, // SRC_RECT_CONSTRAINT_FAST
+    );
   }
 }
