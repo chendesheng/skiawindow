@@ -25,6 +25,10 @@ export const winLib = Deno.dlopen(libPath, {
     parameters: [],
     result: "void",
   },
+  app_set_appearance: {
+    parameters: ["i32"],
+    result: "void",
+  },
   app_get_metal_device: {
     parameters: [],
     result: "pointer",

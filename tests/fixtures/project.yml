@@ -19,9 +19,21 @@ targets:
       path: TestApp/Info.plist
     settings:
       base:
-        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGNING_ALLOWED: "NO"
         PRODUCT_BUNDLE_IDENTIFIER: com.skiawindow.testapp
         PRODUCT_NAME: TestApp
+    preBuildScripts:
+      - script: |
+          EXEC="$BUILT_PRODUCTS_DIR/$PRODUCT_NAME.app/Contents/MacOS/$PRODUCT_NAME"
+          [ -L "$EXEC" ] && rm "$EXEC"
+          exit 0
+        name: Clean stale deno symlink
+    postBuildScripts:
+      - script: |
+          DENO="$(PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" which deno)"
+          EXEC="$BUILT_PRODUCTS_DIR/$PRODUCT_NAME.app/Contents/MacOS/$PRODUCT_NAME"
+          ln -sf "$DENO" "$EXEC"
+        name: Symlink deno as executable
 
   TestAppUITests:
     type: bundle.ui-testing

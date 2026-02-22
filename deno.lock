@@ -2,8 +2,10 @@
   "version": "5",
   "specifiers": {
     "jsr:@std/assert@*": "1.0.16",
+    "jsr:@std/fs@1": "1.0.23",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/path@1": "1.1.4",
+    "jsr:@std/path@^1.1.4": "1.1.4",
     "npm:pixelmatch@7": "7.1.0",
     "npm:pngjs@7": "7.0.0"
   },
@@ -12,6 +14,13 @@
       "integrity": "6a7272ed1eaa77defe76e5ff63ca705d9c495077e2d5fd0126d2b53fc5bd6532",
       "dependencies": [
         "jsr:@std/internal"
+      ]
+    },
+    "@std/fs@1.0.23": {
+      "integrity": "3ecbae4ce4fee03b180fa710caff36bb5adb66631c46a6460aaad49515565a37",
+      "dependencies": [
+        "jsr:@std/internal",
+        "jsr:@std/path@^1.1.4"
       ]
     },
     "@std/internal@1.0.12": {

@@ -7,3 +7,4 @@ demo
 .build
 tests/__snapshots_output__/
 *.xcodeproj/
+**/fixtures/build/

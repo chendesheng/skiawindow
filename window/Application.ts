@@ -30,6 +30,11 @@ export class Application {
     winLib.symbols.app_quit();
   }
 
+  setAppearance(mode: "auto" | "light" | "dark"): void {
+    const value = mode === "light" ? 1 : mode === "dark" ? 2 : 0;
+    winLib.symbols.app_set_appearance(value);
+  }
+
   openLink(href: string): void {
     openLink(href);
   }

@@ -174,6 +174,15 @@ private func decodeUtf8(_ bytes: UnsafePointer<UInt8>?, _ length: Int) -> String
 
 // MARK: - Application lifecycle
 
+@_cdecl("app_set_appearance")
+public func appSetAppearance(_ mode: Int32) {
+    switch mode {
+    case 1: NSApp.appearance = NSAppearance(named: .aqua)
+    case 2: NSApp.appearance = NSAppearance(named: .darkAqua)
+    default: NSApp.appearance = nil
+    }
+}
+
 @_cdecl("app_run")
 public func appRun() {
     NSApp.run()
