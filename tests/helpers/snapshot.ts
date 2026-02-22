@@ -37,8 +37,10 @@ export interface SnapshotOptions {
 /**
  * Assert that a drawing operation produces an image matching the stored baseline.
  *
- * If no baseline exists, the test fails. Run with `-- --update` to generate
- * or regenerate baselines.
+ * - Missing baseline: auto-records to __snapshots__/ and fails (re-run to verify).
+ * - Match: passes silently.
+ * - Mismatch + `--update`: overwrites baseline and passes.
+ * - Mismatch (normal): writes failure artifacts and fails.
  */
 export async function assertImageSnapshot(
   t: Deno.TestContext,
@@ -58,27 +60,33 @@ export async function assertImageSnapshot(
 
   const baselinePath = join(snapshotsDir, `${name}.png`);
 
-  if (isUpdate) {
-    await Deno.mkdir(snapshotsDir, { recursive: true });
-    await Deno.writeFile(baselinePath, actualPng);
-    return;
-  }
-
-  let baselineBytes: Uint8Array;
+  let baselineBytes: Uint8Array | null;
   try {
     baselineBytes = await Deno.readFile(baselinePath);
   } catch {
+    baselineBytes = null;
+  }
+
+  // Case 1: Baseline missing -- auto-record
+  if (baselineBytes === null) {
+    await Deno.mkdir(snapshotsDir, { recursive: true });
+    await Deno.writeFile(baselinePath, actualPng);
     await writeFailureArtifacts(name, actualPng);
     throw new Error(
-      `Baseline snapshot not found: ${baselinePath}. ` +
-      `Run with \`-- --update\` to generate baselines.`,
+      `Recorded new baseline: ${name}. Re-run to verify.`,
     );
   }
 
+  // Case 2: Baseline exists -- compare
   const baseline = decodePNG(baselineBytes);
   const actual = decodePNG(actualPng);
 
   if (baseline.width !== actual.width || baseline.height !== actual.height) {
+    if (isUpdate) {
+      await Deno.writeFile(baselinePath, actualPng);
+      await writeFailureArtifacts(name, actualPng);
+      return;
+    }
     await writeFailureArtifacts(name, actualPng);
     throw new Error(
       `Snapshot size mismatch: baseline ${baseline.width}x${baseline.height} vs actual ${actual.width}x${actual.height}`,
@@ -95,16 +103,29 @@ export async function assertImageSnapshot(
     { threshold },
   );
 
-  if (numDiff > maxDiffPixels) {
-    const diffPng = PNG.sync.write(
-      Object.assign(new PNG({ width, height }), { data: Buffer.from(diffBuf) }),
-    );
-    await writeFailureArtifacts(name, actualPng, new Uint8Array(diffPng));
-    throw new Error(
-      `Snapshot mismatch: ${numDiff} pixels differ (max allowed: ${maxDiffPixels}). ` +
-      `See tests/__snapshots_output__/${name}-actual.png and ${name}-diff.png`,
-    );
+  if (numDiff <= maxDiffPixels) {
+    return; // Case 2a: Match -- pass silently
   }
+
+  const diffPng = new Uint8Array(
+    PNG.sync.write(
+      Object.assign(new PNG({ width, height }), { data: Buffer.from(diffBuf) }),
+    ),
+  );
+
+  // Case 2b: Mismatch + update mode -- overwrite baseline and pass
+  if (isUpdate) {
+    await Deno.writeFile(baselinePath, actualPng);
+    await writeFailureArtifacts(name, actualPng, diffPng);
+    return;
+  }
+
+  // Case 2c: Mismatch -- report failure
+  await writeFailureArtifacts(name, actualPng, diffPng);
+  throw new Error(
+    `Snapshot mismatch: ${numDiff} pixels differ (max allowed: ${maxDiffPixels}). ` +
+    `See tests/__snapshots_output__/${name}-actual.png and ${name}-diff.png`,
+  );
 }
 
 async function writeFailureArtifacts(
