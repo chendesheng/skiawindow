@@ -2,6 +2,8 @@
  * window/Window.ts — High-level API wrapping the native window FFI bindings.
  */
 
+export { Application } from "./Application.ts";
+
 import {
   createWindow,
   getWindowTitle,
@@ -78,32 +80,6 @@ export interface WindowEventMap {
   blur: Event;
   resize: CustomEvent<ResizeEventDetail>;
   render: CustomEvent<RenderEventDetail>;
-}
-
-// ---------------------------------------------------------------------------
-// Application (singleton)
-// ---------------------------------------------------------------------------
-
-export class Application {
-  static readonly shared = new Application();
-
-  private constructor() {}
-
-  get metalDevice(): Deno.PointerValue {
-    return winLib.symbols.app_get_metal_device();
-  }
-
-  get metalQueue(): Deno.PointerValue {
-    return winLib.symbols.app_get_metal_queue();
-  }
-
-  run(): void {
-    winLib.symbols.app_run();
-  }
-
-  quit(): void {
-    winLib.symbols.app_quit();
-  }
 }
 
 // ---------------------------------------------------------------------------

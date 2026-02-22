@@ -541,3 +541,12 @@ public func windowGetResizable(_ win: UnsafeMutableRawPointer?) -> Bool {
     guard let win else { return false }
     return stateFrom(win).window.styleMask.contains(.resizable)
 }
+
+// MARK: - Utilities
+
+@_cdecl("app_open_link")
+public func appOpenLink(_ url: UnsafePointer<UInt8>?, _ urlLen: Int) {
+    guard let urlStr = decodeUtf8(url, urlLen),
+          let url = URL(string: urlStr) else { return }
+    NSWorkspace.shared.open(url)
+}

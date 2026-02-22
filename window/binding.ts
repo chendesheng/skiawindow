@@ -33,6 +33,10 @@ export const winLib = Deno.dlopen(libPath, {
     parameters: [],
     result: "pointer",
   },
+  app_open_link: {
+    parameters: ["buffer", "usize"],
+    result: "void",
+  },
 
   // --- Window lifecycle ---
 
@@ -550,4 +554,9 @@ export function createWindow(
 export function setWindowTitle(win: Deno.PointerValue, title: string): void {
   const titleBytes = encodeUtf8(title);
   winLib.symbols.window_set_title(win, titleBytes, BigInt(titleBytes.length));
+}
+
+export function openLink(href: string): void {
+  const hrefBytes = encodeUtf8(href);
+  winLib.symbols.app_open_link(hrefBytes, BigInt(hrefBytes.length));
 }
