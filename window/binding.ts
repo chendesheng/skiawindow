@@ -37,6 +37,16 @@ export const winLib = Deno.dlopen(libPath, {
     parameters: ["buffer", "usize"],
     result: "void",
   },
+  app_clipboard_write_text: {
+    parameters: ["buffer", "usize"],
+    result: "void",
+    nonblocking: true,
+  },
+  app_clipboard_read_text: {
+    parameters: ["buffer", "usize"],
+    result: "usize",
+    nonblocking: true,
+  },
 
   // --- Window lifecycle ---
 
@@ -559,4 +569,25 @@ export function setWindowTitle(win: Deno.PointerValue, title: string): void {
 export function openLink(href: string): void {
   const hrefBytes = encodeUtf8(href);
   winLib.symbols.app_open_link(hrefBytes, BigInt(hrefBytes.length));
+}
+
+export async function clipboardWriteText(text: string): Promise<void> {
+  const textBytes = encodeUtf8(text);
+  await winLib.symbols.app_clipboard_write_text(
+    textBytes,
+    BigInt(textBytes.length),
+  );
+}
+
+export async function clipboardReadText(): Promise<string> {
+  const initial = new Uint8Array(4096);
+  const totalLen = Number(
+    await winLib.symbols.app_clipboard_read_text(initial, 4096n),
+  );
+  if (totalLen <= initial.length) {
+    return decodeUtf8(initial.subarray(0, totalLen));
+  }
+  const exact = new Uint8Array(totalLen);
+  await winLib.symbols.app_clipboard_read_text(exact, BigInt(exact.length));
+  return decodeUtf8(exact);
 }

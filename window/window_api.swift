@@ -19,6 +19,7 @@
  */
 
 import Carbon.HIToolbox
+import Clip
 import Cocoa
 import MetalKit
 
@@ -549,4 +550,26 @@ public func appOpenLink(_ url: UnsafePointer<UInt8>?, _ urlLen: Int) {
     guard let urlStr = decodeUtf8(url, urlLen),
           let url = URL(string: urlStr) else { return }
     NSWorkspace.shared.open(url)
+}
+
+@_cdecl("app_clipboard_write_text")
+public func appClipboardWriteText(_ text: UnsafePointer<UInt8>?, _ textLen: Int) {
+    guard let str = decodeUtf8(text, textLen) else { return }
+    let stdStr = std.string(str)
+    clip.set_text(stdStr)
+}
+
+@_cdecl("app_clipboard_read_text")
+public func appClipboardReadText(
+    _ buf: UnsafeMutablePointer<UInt8>?, _ bufLen: Int
+) -> Int {
+    var result = std.string()
+    guard clip.get_text(&result) else { return 0 }
+    let bytes = Array(String(result).utf8)
+    guard let buf, bufLen > 0 else { return bytes.count }
+    let toCopy = min(bytes.count, bufLen)
+    for i in 0..<toCopy {
+        buf[i] = bytes[i]
+    }
+    return bytes.count
 }

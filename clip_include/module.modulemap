@@ -1,0 +1,5 @@
+module Clip {
+    header "../clip/clip.h"
+    export *
+    requires cplusplus
+}

@@ -2,7 +2,12 @@
  * window/Application.ts — High-level singleton wrapping native app lifecycle + utilities.
  */
 
-import { openLink, winLib } from "./binding.ts";
+import {
+  clipboardReadText,
+  clipboardWriteText,
+  openLink,
+  winLib,
+} from "./binding.ts";
 
 export class Application {
   static readonly shared = new Application();
@@ -27,5 +32,13 @@ export class Application {
 
   openLink(href: string): void {
     openLink(href);
+  }
+
+  clipboardWriteText(text: string): Promise<void> {
+    return clipboardWriteText(text);
+  }
+
+  clipboardReadText(): Promise<string> {
+    return clipboardReadText();
   }
 }

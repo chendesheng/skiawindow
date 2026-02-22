@@ -51,11 +51,27 @@ let package = Package(
             ]
         ),
 
+        // MARK: Clip — cross-platform clipboard library (dacap/clip)
+        .target(
+            name: "Clip",
+            path: ".",
+            sources: ["clip/clip.cpp", "clip/clip_osx.mm"],
+            publicHeadersPath: "clip_include",
+            cxxSettings: [
+                .headerSearchPath("clip"),
+            ],
+            linkerSettings: [
+                .linkedFramework("Cocoa"),
+            ]
+        ),
+
         // MARK: Window — pure Metal + AppKit windowing (no Skia dependency)
         .target(
             name: "Window",
+            dependencies: ["Clip"],
             path: "window",
             exclude: nonSourceFiles(in: "window", sourceExtensions: ["swift"]),
+            swiftSettings: [.interoperabilityMode(.Cxx)],
             linkerSettings: [
                 .linkedFramework("Cocoa"),
                 .linkedFramework("MetalKit"),
