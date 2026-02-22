@@ -3,7 +3,7 @@
     "build": "swift build -c release",
     "test": "deno task build && deno test --allow-ffi --allow-read --allow-write --unstable-ffi tests/",
     "test:update": "deno task build && deno test --allow-ffi --allow-read --allow-write --unstable-ffi tests/ -- --update",
-    "test:ui": "rm -rf ~/Library/Containers/com.skiawindow.testapp.uitests.xctrunner/Data/tmp/skiawindow_snapshots && xcodegen generate --spec tests/fixtures/project.yml && xcodebuild test -project tests/fixtures/SkiaWindowTests.xcodeproj -scheme TestAppUITests -destination 'platform=macOS'; deno run --allow-read --allow-write --allow-env tests/scripts/copy_snapshots.ts",
-    "test:ui:update": "rm -rf ~/Library/Containers/com.skiawindow.testapp.uitests.xctrunner/Data/tmp/skiawindow_snapshots && export TEST_RUNNER_SNAPSHOT_UPDATE=1 && xcodegen generate --spec tests/fixtures/project.yml && xcodebuild test -project tests/fixtures/SkiaWindowTests.xcodeproj -scheme TestAppUITests -destination 'platform=macOS'; deno run --allow-read --allow-write --allow-env tests/scripts/copy_snapshots.ts --update"
+    "test:ui": "deno run --allow-read --allow-write --allow-env --allow-run tests/scripts/run_ui_tests.ts",
+    "test:ui:update": "deno run --allow-read --allow-write --allow-env --allow-run tests/scripts/run_ui_tests.ts --update"
   }
 }

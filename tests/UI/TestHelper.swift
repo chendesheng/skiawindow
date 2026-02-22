@@ -7,12 +7,17 @@ enum TestHelper {
         return url.path
     }()
 
-    static func launchApp(_ script: String) -> XCUIApplication {
+    static func launchApp(
+        _ script: String,
+        extraDenoFlags: [String] = [],
+        extraArgs: [String] = []
+    ) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = [
-            "run", "--allow-ffi", "--allow-read", "--allow-env", "--unstable-ffi",
-            projectRoot + "/tests/apps/" + script,
-        ]
+        app.launchArguments =
+            ["run", "--allow-ffi", "--allow-read", "--allow-env", "--unstable-ffi"]
+            + extraDenoFlags
+            + [projectRoot + "/tests/apps/" + script]
+            + extraArgs
         app.launch()
         XCTAssertTrue(app.windows.firstMatch.waitForExistence(timeout: 10))
         return app

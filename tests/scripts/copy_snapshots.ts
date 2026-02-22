@@ -16,7 +16,7 @@ await emptyDir(outputDir);
 let failCount = 0;
 try {
   for await (const entry of Deno.readDir(snapDir)) {
-    if (entry.isFile && entry.name.endsWith("_FAIL.png")) {
+    if (entry.isFile && entry.name.includes("_FAIL.")) {
       await copy(join(snapDir, entry.name), join(outputDir, entry.name), {
         overwrite: true,
       });
@@ -46,8 +46,8 @@ try {
   if (toCopy.length > 0) {
     await ensureDir(snapshotsDir);
     for (const name of toCopy) {
-      const src = join(snapDir, `${name}.png`);
-      const dest = join(snapshotsDir, `${name}.png`);
+      const src = join(snapDir, name);
+      const dest = join(snapshotsDir, name);
       await copy(src, dest, { overwrite: true });
       const label = manifest.missing.includes(name)
         ? "new baseline"

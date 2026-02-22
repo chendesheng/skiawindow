@@ -19,7 +19,7 @@ final class PreserveBufferOnTests: XCTestCase {
         window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         Thread.sleep(forTimeInterval: 0.2)
         let screenshot = window.screenshot().image
-        SnapshotHelper.assertSnapshot(screenshot, named: "testPreserveBufferOn")
+        SnapshotHelper.assertImageSnapshot(screenshot, named: "testPreserveBufferOn")
     }
 }
 
@@ -42,6 +42,6 @@ final class PreserveBufferOffTests: XCTestCase {
         window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         Thread.sleep(forTimeInterval: 0.2)
         let screenshot = window.screenshot().image
-        SnapshotHelper.assertSnapshot(screenshot, named: "testPreserveBufferOff")
+        SnapshotHelper.assertImageSnapshot(screenshot, named: "testPreserveBufferOff")
     }
 }

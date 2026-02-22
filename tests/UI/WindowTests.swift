@@ -18,7 +18,7 @@ final class WindowTests: XCTestCase {
     func testInitialRender() {
         let window = app.windows.firstMatch
         let screenshot = window.screenshot().image
-        SnapshotHelper.assertSnapshot(screenshot, named: "testInitialRender")
+        SnapshotHelper.assertImageSnapshot(screenshot, named: "testInitialRender")
     }
 
     func testClickChangesBackground() {
@@ -26,7 +26,7 @@ final class WindowTests: XCTestCase {
         window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         Thread.sleep(forTimeInterval: 0.2)
         let screenshot = window.screenshot().image
-        SnapshotHelper.assertSnapshot(screenshot, named: "testClickChangesBackground")
+        SnapshotHelper.assertImageSnapshot(screenshot, named: "testClickChangesBackground")
     }
 
     func testKeyResetsBackground() {
@@ -36,6 +36,6 @@ final class WindowTests: XCTestCase {
         app.typeKey("r", modifierFlags: [])
         Thread.sleep(forTimeInterval: 0.2)
         let screenshot = window.screenshot().image
-        SnapshotHelper.assertSnapshot(screenshot, named: "testKeyResetsBackground")
+        SnapshotHelper.assertImageSnapshot(screenshot, named: "testKeyResetsBackground")
     }
 }
