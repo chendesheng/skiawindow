@@ -100,6 +100,12 @@ final class MetalView: MTKView {
         state.onWheel?(mods, button, x, y, -event.scrollingDeltaX, -event.scrollingDeltaY)
     }
 
+    // MARK: Cursor
+
+    override func cursorUpdate(with event: NSEvent) {
+        state.cursor.set()
+    }
+
     // MARK: Tracking area (required for mouseMoved events)
 
     override func updateTrackingAreas() {
@@ -107,7 +113,7 @@ final class MetalView: MTKView {
         trackingAreas.forEach { removeTrackingArea($0) }
         addTrackingArea(NSTrackingArea(
             rect: bounds,
-            options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
+            options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect, .cursorUpdate],
             owner: self,
             userInfo: nil
         ))

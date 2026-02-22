@@ -64,6 +64,8 @@ final class WindowState: NSObject, NSWindowDelegate {
     var onWindowFocus: VoidCallback?
     var onWindowBlur: VoidCallback?
 
+    var cursor: NSCursor = .arrow
+
     var preserveDrawingBuffer: Bool = false
     var offscreenTexture: MTLTexture? = nil
     var currentDrawable: CAMetalDrawable? = nil

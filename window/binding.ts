@@ -175,6 +175,10 @@ export const winLib = Deno.dlopen(libPath, {
     parameters: ["pointer", "bool"],
     result: "void",
   },
+  window_set_cursor: {
+    parameters: ["pointer", "i32"],
+    result: "void",
+  },
 
   // --- Window property getters ---
 
@@ -205,6 +209,10 @@ export const winLib = Deno.dlopen(libPath, {
   window_get_resizable: {
     parameters: ["pointer"],
     result: "bool",
+  },
+  window_get_cursor: {
+    parameters: ["pointer"],
+    result: "i32",
   },
 });
 

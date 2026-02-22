@@ -85,6 +85,42 @@ export interface WindowEventMap {
 }
 
 // ---------------------------------------------------------------------------
+// Cursor ID mapping (must match constants in window_api.swift)
+// ---------------------------------------------------------------------------
+
+const CURSOR_NAME_TO_ID: Record<string, number> = {
+  "default": 0,
+  "pointer": 1,
+  "text": 2,
+  "crosshair": 3,
+  "row-resize": 4,
+  "col-resize": 5,
+  "n-resize": 6,
+  "s-resize": 7,
+  "e-resize": 8,
+  "w-resize": 9,
+  "grab": 10,
+  "grabbing": 11,
+  "not-allowed": 12,
+};
+
+const CURSOR_ID_TO_NAME: string[] = [
+  "default",
+  "pointer",
+  "text",
+  "crosshair",
+  "row-resize",
+  "col-resize",
+  "n-resize",
+  "s-resize",
+  "e-resize",
+  "w-resize",
+  "grab",
+  "grabbing",
+  "not-allowed",
+];
+
+// ---------------------------------------------------------------------------
 // Window
 // ---------------------------------------------------------------------------
 
@@ -266,5 +302,14 @@ export class Window extends EventTarget {
   }
   set zoomButtonVisible(v: boolean) {
     winLib.symbols.window_set_zoom_button_visible(this.#ptr, v);
+  }
+
+  getCursor(): string {
+    const id = winLib.symbols.window_get_cursor(this.#ptr) as number;
+    return CURSOR_ID_TO_NAME[id] ?? "default";
+  }
+
+  setCursor(cursor: string): void {
+    winLib.symbols.window_set_cursor(this.#ptr, CURSOR_NAME_TO_ID[cursor] ?? 0);
   }
 }

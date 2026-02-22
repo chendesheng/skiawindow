@@ -577,6 +577,72 @@ public func windowGetResizable(_ win: UnsafeMutableRawPointer?) -> Bool {
     return stateFrom(win).window.styleMask.contains(.resizable)
 }
 
+// MARK: - Cursor
+
+private let CURSOR_DEFAULT: Int32         = 0
+private let CURSOR_POINTER: Int32         = 1
+private let CURSOR_TEXT: Int32            = 2
+private let CURSOR_CROSSHAIR: Int32       = 3
+private let CURSOR_ROW_RESIZE: Int32      = 4
+private let CURSOR_COL_RESIZE: Int32      = 5
+private let CURSOR_N_RESIZE: Int32        = 6
+private let CURSOR_S_RESIZE: Int32        = 7
+private let CURSOR_E_RESIZE: Int32        = 8
+private let CURSOR_W_RESIZE: Int32        = 9
+private let CURSOR_GRAB: Int32            = 10
+private let CURSOR_GRABBING: Int32        = 11
+private let CURSOR_NOT_ALLOWED: Int32     = 12
+
+private func cursorFromId(_ id: Int32) -> NSCursor {
+    switch id {
+    case CURSOR_POINTER:     return .pointingHand
+    case CURSOR_TEXT:        return .iBeam
+    case CURSOR_CROSSHAIR:  return .crosshair
+    case CURSOR_ROW_RESIZE:  return .resizeUpDown
+    case CURSOR_COL_RESIZE:  return .resizeLeftRight
+    case CURSOR_N_RESIZE:    return .resizeUp
+    case CURSOR_S_RESIZE:    return .resizeDown
+    case CURSOR_E_RESIZE:    return .resizeRight
+    case CURSOR_W_RESIZE:    return .resizeLeft
+    case CURSOR_GRAB:        return .openHand
+    case CURSOR_GRABBING:    return .closedHand
+    case CURSOR_NOT_ALLOWED: return .operationNotAllowed
+    default:                 return .arrow
+    }
+}
+
+private func cursorToId(_ cursor: NSCursor) -> Int32 {
+    switch cursor {
+    case .pointingHand:        return CURSOR_POINTER
+    case .iBeam:               return CURSOR_TEXT
+    case .crosshair:           return CURSOR_CROSSHAIR
+    case .resizeUpDown:        return CURSOR_ROW_RESIZE
+    case .resizeLeftRight:     return CURSOR_COL_RESIZE
+    case .resizeUp:            return CURSOR_N_RESIZE
+    case .resizeDown:          return CURSOR_S_RESIZE
+    case .resizeRight:         return CURSOR_E_RESIZE
+    case .resizeLeft:          return CURSOR_W_RESIZE
+    case .openHand:            return CURSOR_GRAB
+    case .closedHand:          return CURSOR_GRABBING
+    case .operationNotAllowed: return CURSOR_NOT_ALLOWED
+    default:                   return CURSOR_DEFAULT
+    }
+}
+
+@_cdecl("window_set_cursor")
+public func windowSetCursor(_ win: UnsafeMutableRawPointer?, _ cursorId: Int32) {
+    guard let win else { return }
+    let state = stateFrom(win)
+    state.cursor = cursorFromId(cursorId)
+    state.cursor.set()
+}
+
+@_cdecl("window_get_cursor")
+public func windowGetCursor(_ win: UnsafeMutableRawPointer?) -> Int32 {
+    guard let win else { return CURSOR_DEFAULT }
+    return cursorToId(stateFrom(win).cursor)
+}
+
 // MARK: - Utilities
 
 @_cdecl("app_open_link")
