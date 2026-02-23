@@ -70,6 +70,10 @@ export const winLib = Deno.dlopen(libPath, {
     parameters: [],
     result: "pointer",
   },
+  app_get_application_support_dir: {
+    parameters: ["buffer", "usize"],
+    result: "usize",
+  },
   app_open_link: {
     parameters: ["buffer", "usize"],
     result: "void",
@@ -667,6 +671,24 @@ export function setWindowTitle(win: Deno.PointerValue, title: string): void {
 export function openLink(href: string): void {
   const hrefBytes = encodeUtf8(href);
   winLib.symbols.app_open_link(hrefBytes, BigInt(hrefBytes.length));
+}
+
+export function getApplicationSupportDir(): string {
+  const required = Number(
+    winLib.symbols.app_get_application_support_dir(new Uint8Array(0), 0n),
+  );
+  if (required <= 0) {
+    throw new Error("Failed to resolve Application Support directory");
+  }
+
+  const buf = new Uint8Array(required);
+  const written = Number(
+    winLib.symbols.app_get_application_support_dir(buf, BigInt(buf.length)),
+  );
+  if (written <= 0) {
+    throw new Error("Failed to read Application Support directory");
+  }
+  return decodeUtf8(buf.subarray(0, written));
 }
 
 export async function clipboardWriteText(text: string): Promise<void> {

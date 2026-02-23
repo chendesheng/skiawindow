@@ -252,6 +252,38 @@ public func appGetMetalQueue() -> UnsafeMutableRawPointer? {
     return Unmanaged.passUnretained(queue).toOpaque()
 }
 
+@_cdecl("app_get_application_support_dir")
+public func appGetApplicationSupportDir(
+    _ out: UnsafeMutablePointer<UInt8>?,
+    _ capacity: Int
+) -> Int {
+    guard
+        let baseURL = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first
+    else {
+        return 0
+    }
+
+    let appFolder =
+        Bundle.main.bundleIdentifier
+        ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
+        ?? ProcessInfo.processInfo.processName
+    let url = baseURL.appendingPathComponent(appFolder, isDirectory: true)
+
+    let bytes = Array(url.path.utf8)
+    if out == nil || capacity < bytes.count {
+        return bytes.count
+    }
+
+    guard let out else { return bytes.count }
+    for i in 0..<bytes.count {
+        out[i] = bytes[i]
+    }
+    return bytes.count
+}
+
 // MARK: - Window lifecycle
 
 @_cdecl("window_create")

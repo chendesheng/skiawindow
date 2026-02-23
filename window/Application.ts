@@ -5,6 +5,7 @@
 import {
   clipboardReadText,
   clipboardWriteText,
+  getApplicationSupportDir,
   openLink,
   winLib,
 } from "./binding.ts";
@@ -20,6 +21,10 @@ export class Application {
 
   get metalQueue(): Deno.PointerValue {
     return winLib.symbols.app_get_metal_queue();
+  }
+
+  applicationSupportDir(): string {
+    return getApplicationSupportDir();
   }
 
   private _running = false;
