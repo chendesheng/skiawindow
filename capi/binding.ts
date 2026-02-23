@@ -507,6 +507,10 @@ export const skLib = Deno.dlopen(libPath, {
   sk_canvas_draw_paint: { parameters: ["pointer", "pointer"], result: "void" },
   sk_canvas_draw_color4f: { parameters: ["pointer", "buffer", "i32"], result: "void" },
   sk_canvas_draw_points: { parameters: ["pointer", "i32", "usize", "buffer", "pointer"], result: "void" },
+  sk_canvas_draw_simple_text: {
+    parameters: ["pointer", "buffer", "usize", "i32", "f32", "f32", "pointer", "pointer"],
+    result: "void",
+  },
   sk_canvas_clip_rect_with_operation: { parameters: ["pointer", "buffer", "i32", "bool"], result: "void" },
   sk_canvas_clip_path_with_operation: { parameters: ["pointer", "pointer", "i32", "bool"], result: "void" },
   sk_canvas_draw_image_rect: {
@@ -536,6 +540,14 @@ export const skLib = Deno.dlopen(libPath, {
   // --- Font manager (extended) ---
 
   sk_fontmgr_create_from_data: { parameters: ["pointer", "pointer", "i32"], result: "pointer" },
+  sk_fontmgr_match_family_style: {
+    parameters: ["pointer", "buffer", "pointer"],
+    result: "pointer",
+  },
+
+  // --- Font style ---
+
+  sk_fontstyle_delete: { parameters: ["pointer"], result: "void" },
 
   // --- Font collection (extended) ---
 

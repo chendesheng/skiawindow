@@ -1,5 +1,6 @@
-import { skLib, toF32Bytes } from "./binding.ts";
+import { encodeUtf8, skLib, toF32Bytes } from "./binding.ts";
 import type { Color4f } from "./Color.ts";
+import type { Font } from "./Font.ts";
 import type { Image } from "./Image.ts";
 import type { Matrix3x3 } from "./Matrix.ts";
 import type { Paint } from "./Paint.ts";
@@ -9,6 +10,7 @@ import { rrectGetRect, rrectIsUniform } from "./Rect.ts";
 import type { Rect, RRect } from "./Rect.ts";
 
 const sk = skLib.symbols;
+const SK_TEXT_ENCODING_UTF8 = 0;
 
 // sk_sampling_options_t: linear filter, no mipmaps (24 bytes)
 const DEFAULT_SAMPLING_OPTIONS = (() => {
@@ -176,6 +178,20 @@ export class Canvas {
 
   drawParagraph(p: Paragraph, x: number, y: number): void {
     sk.sk_paragraph_paint(p._ptr, this.#ptr, x, y);
+  }
+
+  drawText(text: string, x: number, y: number, paint: Paint, font: Font): void {
+    const utf8 = encodeUtf8(text);
+    sk.sk_canvas_draw_simple_text(
+      this.#ptr,
+      utf8,
+      BigInt(utf8.length),
+      SK_TEXT_ENCODING_UTF8,
+      x,
+      y,
+      font._ptr,
+      paint._ptr,
+    );
   }
 
   drawImageRect(image: Image, src: Rect, dst: Rect, paint: Paint): void {

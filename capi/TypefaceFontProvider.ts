@@ -1,4 +1,5 @@
-import { skLib, skStringNew, asFfiBuffer } from "./binding.ts";
+import { asFfiBuffer, encodeUtf8, skLib, skStringNew } from "./binding.ts";
+import { FontStyle } from "./FontStyle.ts";
 
 const sk = skLib.symbols;
 
@@ -49,6 +50,29 @@ export class TypefaceFontProvider {
    */
   asFontMgr(): Deno.PointerValue {
     return sk.sk_typeface_font_provider_as_fontmgr(this.#ptr);
+  }
+
+  matchFamilyStyle(
+    familyName: string,
+    style?: FontStyle,
+  ): Deno.PointerValue {
+    const family = encodeUtf8(`${familyName}\0`);
+    const fontStyle = style ?? new FontStyle();
+    try {
+      const typeface = sk.sk_fontmgr_match_family_style(
+        this.asFontMgr(),
+        asFfiBuffer(family),
+        fontStyle._ptr,
+      );
+      if (!typeface) {
+        throw new Error(`Failed to resolve typeface for family: ${familyName}`);
+      }
+      return typeface;
+    } finally {
+      if (!style) {
+        fontStyle.delete();
+      }
+    }
   }
 
   delete(): void {
