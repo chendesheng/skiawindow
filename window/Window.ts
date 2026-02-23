@@ -7,6 +7,7 @@ export { Application } from "./Application.ts";
 import {
   createWindow,
   getWindowTitle,
+  Modifiers,
   setOnKeyDown,
   setOnKeyUp,
   setOnMouseDown,
@@ -32,21 +33,15 @@ export type MouseEventDetail = {
   button: number;
   buttons: number;
   clickCount: number;
-  ctrlKey: boolean;
-  shiftKey: boolean;
-  altKey: boolean;
-  metaKey: boolean;
-};
+  superKey: boolean;
+} & Modifiers;
 
 export type KeyEventDetail = {
   key: string;
   keyCode: number;
   isRepeat: boolean;
-  ctrlKey: boolean;
-  shiftKey: boolean;
-  altKey: boolean;
-  metaKey: boolean;
-};
+  superKey: boolean;
+} & Modifiers;
 
 export type WheelEventDetail = MouseEventDetail & {
   deltaX: number;
@@ -159,7 +154,15 @@ export class Window extends EventTarget {
 
     this.#callbacks.push(
       setOnMouseDown(ptr, (mods, button, x, y, clickCount, buttons) => {
-        const detail = { ...mods, button, buttons, clickCount, x, y };
+        const detail = {
+          ...mods,
+          superKey: mods.metaKey,
+          button,
+          buttons,
+          clickCount,
+          x,
+          y,
+        };
         this.dispatchEvent(new CustomEvent("mousedown", { detail }));
         if (button === 1) {
           this.dispatchEvent(new CustomEvent("contextmenu", { detail }));
@@ -168,28 +171,44 @@ export class Window extends EventTarget {
       setOnMouseUp(ptr, (mods, button, x, y, clickCount, buttons) => {
         this.dispatchEvent(
           new CustomEvent("mouseup", {
-            detail: { ...mods, button, buttons, clickCount, x, y },
+            detail: {
+              ...mods,
+              superKey: mods.metaKey,
+              button,
+              buttons,
+              clickCount,
+              x,
+              y,
+            },
           }),
         );
       }),
       setOnMouseMove(ptr, (mods, button, x, y, clickCount, buttons) => {
         this.dispatchEvent(
           new CustomEvent("mousemove", {
-            detail: { ...mods, button, buttons, clickCount, x, y },
+            detail: {
+              ...mods,
+              superKey: mods.metaKey,
+              button,
+              buttons,
+              clickCount,
+              x,
+              y,
+            },
           }),
         );
       }),
       setOnKeyDown(ptr, (mods, keyCode, isRepeat, key) => {
         this.dispatchEvent(
           new CustomEvent("keydown", {
-            detail: { ...mods, key, keyCode, isRepeat },
+            detail: { ...mods, key, keyCode, isRepeat, superKey: mods.metaKey },
           }),
         );
       }),
       setOnKeyUp(ptr, (mods, keyCode, isRepeat, key) => {
         this.dispatchEvent(
           new CustomEvent("keyup", {
-            detail: { ...mods, key, keyCode, isRepeat },
+            detail: { ...mods, key, keyCode, isRepeat, superKey: mods.metaKey },
           }),
         );
       }),
@@ -216,7 +235,17 @@ export class Window extends EventTarget {
       setOnWheel(ptr, (mods, button, x, y, deltaX, deltaY) => {
         this.dispatchEvent(
           new CustomEvent("wheel", {
-            detail: { ...mods, button, buttons: 0, clickCount: 0, x, y, deltaX, deltaY },
+            detail: {
+              ...mods,
+              superKey: mods.metaKey,
+              button,
+              buttons: 0,
+              clickCount: 0,
+              x,
+              y,
+              deltaX,
+              deltaY,
+            },
           }),
         );
       }),
