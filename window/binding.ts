@@ -2,9 +2,14 @@
  * window/binding.ts — Deno FFI bindings for libWindow.dylib (Metal + AppKit).
  */
 
-import { join, dirname, fromFileUrl } from "jsr:@std/path@^1";
+import { dirname, fromFileUrl, join } from "jsr:@std/path@^1";
 
-const libDir = join(dirname(fromFileUrl(import.meta.url)), "..", ".build", "release");
+const libDir = join(
+  dirname(fromFileUrl(import.meta.url)),
+  "..",
+  ".build",
+  "release",
+);
 const libPath = join(libDir, "libWindow.dylib");
 
 const utf8Encoder = new TextEncoder();
@@ -21,13 +26,9 @@ export const winLib = Deno.dlopen(libPath, {
     parameters: [],
     result: "void",
   },
-  app_finish_launching: {
-    parameters: [],
-    result: "void",
-  },
   app_poll_events: {
-    parameters: [],
-    result: "void",
+    parameters: ["f64"],
+    result: "i32",
   },
   app_quit: {
     parameters: [],
@@ -292,39 +293,72 @@ function keyFromSpecialKey(specialKey: number, keyCodePoint: number): string {
       const key = decodeCodePoint(keyCodePoint);
       return key.length > 0 ? key : "Unidentified";
     }
-    case SpecialKey.Dead: return "Dead";
-    case SpecialKey.Unidentified: return "Unidentified";
-    case SpecialKey.Enter: return "Enter";
-    case SpecialKey.Tab: return "Tab";
-    case SpecialKey.Backspace: return "Backspace";
-    case SpecialKey.Escape: return "Escape";
-    case SpecialKey.CapsLock: return "CapsLock";
-    case SpecialKey.Shift: return "Shift";
-    case SpecialKey.Control: return "Control";
-    case SpecialKey.Alt: return "Alt";
-    case SpecialKey.Meta: return "Meta";
-    case SpecialKey.ArrowLeft: return "ArrowLeft";
-    case SpecialKey.ArrowRight: return "ArrowRight";
-    case SpecialKey.ArrowUp: return "ArrowUp";
-    case SpecialKey.ArrowDown: return "ArrowDown";
-    case SpecialKey.Home: return "Home";
-    case SpecialKey.End: return "End";
-    case SpecialKey.PageUp: return "PageUp";
-    case SpecialKey.PageDown: return "PageDown";
-    case SpecialKey.Delete: return "Delete";
-    case SpecialKey.F1: return "F1";
-    case SpecialKey.F2: return "F2";
-    case SpecialKey.F3: return "F3";
-    case SpecialKey.F4: return "F4";
-    case SpecialKey.F5: return "F5";
-    case SpecialKey.F6: return "F6";
-    case SpecialKey.F7: return "F7";
-    case SpecialKey.F8: return "F8";
-    case SpecialKey.F9: return "F9";
-    case SpecialKey.F10: return "F10";
-    case SpecialKey.F11: return "F11";
-    case SpecialKey.F12: return "F12";
-    default: return "Unidentified";
+    case SpecialKey.Dead:
+      return "Dead";
+    case SpecialKey.Unidentified:
+      return "Unidentified";
+    case SpecialKey.Enter:
+      return "Enter";
+    case SpecialKey.Tab:
+      return "Tab";
+    case SpecialKey.Backspace:
+      return "Backspace";
+    case SpecialKey.Escape:
+      return "Escape";
+    case SpecialKey.CapsLock:
+      return "CapsLock";
+    case SpecialKey.Shift:
+      return "Shift";
+    case SpecialKey.Control:
+      return "Control";
+    case SpecialKey.Alt:
+      return "Alt";
+    case SpecialKey.Meta:
+      return "Meta";
+    case SpecialKey.ArrowLeft:
+      return "ArrowLeft";
+    case SpecialKey.ArrowRight:
+      return "ArrowRight";
+    case SpecialKey.ArrowUp:
+      return "ArrowUp";
+    case SpecialKey.ArrowDown:
+      return "ArrowDown";
+    case SpecialKey.Home:
+      return "Home";
+    case SpecialKey.End:
+      return "End";
+    case SpecialKey.PageUp:
+      return "PageUp";
+    case SpecialKey.PageDown:
+      return "PageDown";
+    case SpecialKey.Delete:
+      return "Delete";
+    case SpecialKey.F1:
+      return "F1";
+    case SpecialKey.F2:
+      return "F2";
+    case SpecialKey.F3:
+      return "F3";
+    case SpecialKey.F4:
+      return "F4";
+    case SpecialKey.F5:
+      return "F5";
+    case SpecialKey.F6:
+      return "F6";
+    case SpecialKey.F7:
+      return "F7";
+    case SpecialKey.F8:
+      return "F8";
+    case SpecialKey.F9:
+      return "F9";
+    case SpecialKey.F10:
+      return "F10";
+    case SpecialKey.F11:
+      return "F11";
+    case SpecialKey.F12:
+      return "F12";
+    default:
+      return "Unidentified";
   }
 }
 
@@ -397,7 +431,14 @@ type RenderCb = Deno.UnsafeCallback<typeof RENDER_CB_DEF>;
 function makeMouseCb(handler: MouseHandler): MouseCb {
   return new Deno.UnsafeCallback(
     MOUSE_CB_DEF,
-    (modBits: number, button: number, x: number, y: number, clickCount: number, buttons: number) => {
+    (
+      modBits: number,
+      button: number,
+      x: number,
+      y: number,
+      clickCount: number,
+      buttons: number,
+    ) => {
       handler(decodeModifiers(modBits), button, x, y, clickCount, buttons);
     },
   );
@@ -488,7 +529,11 @@ export function setOnWindowResize(
 
 export function setOnRender(
   win: Deno.PointerValue,
-  handler: (drawableWidth: number, drawableHeight: number, scale: number) => void,
+  handler: (
+    drawableWidth: number,
+    drawableHeight: number,
+    scale: number,
+  ) => void,
 ): RenderCb {
   const cb = new Deno.UnsafeCallback(RENDER_CB_DEF, handler);
   winLib.symbols.window_set_on_render(win, cb.pointer);
@@ -501,7 +546,14 @@ export function setOnWheel(
 ): WheelCb {
   const cb = new Deno.UnsafeCallback(
     WHEEL_CB_DEF,
-    (modBits: number, button: number, x: number, y: number, deltaX: number, deltaY: number) => {
+    (
+      modBits: number,
+      button: number,
+      x: number,
+      y: number,
+      deltaX: number,
+      deltaY: number,
+    ) => {
       handler(decodeModifiers(modBits), button, x, y, deltaX, deltaY);
     },
   );

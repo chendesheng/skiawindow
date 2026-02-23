@@ -22,23 +22,21 @@ export class Application {
     return winLib.symbols.app_get_metal_queue();
   }
 
-  #running = false;
+  private _running = false;
+  get running(): boolean {
+    return this._running;
+  }
 
   async run(): Promise<void> {
-    winLib.symbols.app_finish_launching();
-    this.#running = true;
-    while (this.#running) {
-      winLib.symbols.app_poll_events();
+    this._running = true;
+    while (this._running) {
+      winLib.symbols.app_poll_events(1.0 / 60.0);
       await new Promise<void>((r) => setTimeout(r, 0));
     }
   }
 
-  pollEvents(): void {
-    winLib.symbols.app_poll_events();
-  }
-
   quit(): void {
-    this.#running = false;
+    this._running = false;
   }
 
   setAppearance(mode: "auto" | "light" | "dark"): void {
