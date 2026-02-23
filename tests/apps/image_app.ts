@@ -39,7 +39,12 @@ win.addEventListener("close", () => {
 
 win.addEventListener("render", (e) => {
   const { texture, width, height } = e.detail;
-  const surface = Surface.MakeFromBackendRenderTarget(grCtx, width, height, texture);
+  const surface = Surface.MakeFromBackendRenderTarget(
+    grCtx,
+    width,
+    height,
+    texture,
+  );
   if (!surface) return;
 
   const canvas = surface.getCanvas();

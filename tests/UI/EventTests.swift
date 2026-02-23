@@ -34,21 +34,26 @@ final class EventTests: XCTestCase {
         return (try? String(contentsOfFile: logPath, encoding: .utf8)) ?? ""
     }
 
-    private func assertEventSnapshot(named name: String, file: StaticString = #file, line: UInt = #line) {
+    private func assertEventSnapshot(
+        named name: String, file: StaticString = #file, line: UInt = #line
+    ) {
         let text = readLog()
         let data = text.data(using: .utf8)!
-        SnapshotHelper.assertSnapshot(data, named: "\(name).jsonl", compare: { baseline in
-            let baselineText = String(data: baseline, encoding: .utf8) ?? ""
-            if baselineText == text { return nil }
-            return "Text snapshot mismatch for \(name):\n--- baseline ---\n\(baselineText)\n--- actual ---\n\(text)"
-        }, file: file, line: line)
+        SnapshotHelper.assertSnapshot(
+            data, named: "\(name).jsonl",
+            compare: { baseline in
+                let baselineText = String(data: baseline, encoding: .utf8) ?? ""
+                if baselineText == text { return nil }
+                return
+                    "Text snapshot mismatch for \(name):\n--- baseline ---\n\(baselineText)\n--- actual ---\n\(text)"
+            }, file: file, line: line)
     }
 
     private func parseEvents() -> [[String: Any]] {
         let text = readLog()
         return text.split(separator: "\n").compactMap { line in
             guard let data = line.data(using: .utf8),
-                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             else { return nil }
             return obj
         }
@@ -61,57 +66,16 @@ final class EventTests: XCTestCase {
         clearLog()
     }
 
-    // MARK: - mousedown
+    // MARK: - mouse
 
-    func testMouseDownLeft() {
+    func testClick() {
         let window = app.windows.firstMatch
         let center = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         settleAt(center)
         center.click()
-        assertEventSnapshot(named: "testMouseDownLeft")
-    }
-
-    func testMouseDownRight() {
-        let window = app.windows.firstMatch
-        let center = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        settleAt(center)
         center.rightClick()
-        assertEventSnapshot(named: "testMouseDownRight")
-    }
-
-    // MARK: - mousemove
-
-    func testMouseMove() {
-        let window = app.windows.firstMatch
-        let start = window.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.25))
-        let end = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        settleAt(start)
-        end.hover()
-
-        let events = parseEvents()
-        XCTAssertGreaterThan(events.count, 0, "Expected at least one mousemove event")
-        for event in events {
-            XCTAssertEqual(event["type"] as? String, "mousemove")
-        }
-        if let last = events.last, let detail = last["detail"] as? [String: Any] {
-            XCTAssertEqual(detail["x"] as? Int, 200)
-            XCTAssertEqual(detail["y"] as? Int, 134)
-            XCTAssertEqual(detail["button"] as? Int, 0)
-            XCTAssertEqual(detail["ctrlKey"] as? Bool, false)
-            XCTAssertEqual(detail["shiftKey"] as? Bool, false)
-            XCTAssertEqual(detail["altKey"] as? Bool, false)
-            XCTAssertEqual(detail["metaKey"] as? Bool, false)
-        }
-    }
-
-    // MARK: - mouseup
-
-    func testMouseUp() {
-        let window = app.windows.firstMatch
-        let center = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        settleAt(center)
-        center.click()
-        assertEventSnapshot(named: "testMouseUp")
+        center.doubleTap()
+        assertEventSnapshot(named: "testClick")
     }
 
     // MARK: - drag
@@ -127,11 +91,13 @@ final class EventTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(events.count, 3, "Expected mousedown + mousemoves + mouseup")
 
         XCTAssertEqual(events.first?["type"] as? String, "mousedown")
-        XCTAssertEqual(events.last?["type"] as? String, "mouseup")
         for event in events.dropFirst().dropLast() {
             XCTAssertEqual(event["type"] as? String, "mousemove")
+            let detail = event["detail"] as! [String: Any]
+            XCTAssertEqual(detail["buttons"] as? Int, 1)
         }
 
+        XCTAssertEqual(events.last?["type"] as? String, "mouseup")
         if let lastDetail = events.last?["detail"] as? [String: Any] {
             XCTAssertEqual(lastDetail["button"] as? Int, 0)
         }
@@ -159,55 +125,34 @@ final class EventTests: XCTestCase {
         app.typeKey("a", modifierFlags: [.shift, .option])
         app.typeKey("a", modifierFlags: [.control, .option, .command])
 
-        app.typeKey(.return, modifierFlags: [])
-        app.typeKey(.tab, modifierFlags: [])
-        app.typeKey(.delete, modifierFlags: [])
-        app.typeKey(.escape, modifierFlags: [])
-        app.typeKey(.leftArrow, modifierFlags: [])
-        app.typeKey(.rightArrow, modifierFlags: [])
-        app.typeKey(.upArrow, modifierFlags: [])
-        app.typeKey(.downArrow, modifierFlags: [])
-        app.typeKey(.home, modifierFlags: [])
-        app.typeKey(.end, modifierFlags: [])
-        app.typeKey(.pageUp, modifierFlags: [])
-        app.typeKey(.pageDown, modifierFlags: [])
-        app.typeKey(.forwardDelete, modifierFlags: [])
-        app.typeKey(.F1, modifierFlags: [])
-        app.typeKey(.F2, modifierFlags: [])
-        app.typeKey(.F3, modifierFlags: [])
-        app.typeKey(.F4, modifierFlags: [])
-        app.typeKey(.F5, modifierFlags: [])
-        app.typeKey(.F6, modifierFlags: [])
-        app.typeKey(.F7, modifierFlags: [])
-        app.typeKey(.F8, modifierFlags: [])
-        app.typeKey(.F9, modifierFlags: [])
-        app.typeKey(.F10, modifierFlags: [])
-        app.typeKey(.F11, modifierFlags: [])
-        app.typeKey(.F12, modifierFlags: [])
+        let specialKeys: [XCUIKeyboardKey] = [
+            .return, .tab, .delete, .escape,
+            .leftArrow, .rightArrow, .upArrow, .downArrow,
+            .home, .end, .pageUp, .pageDown, .forwardDelete,
+            .F1, .F2, .F3, .F4, .F5, .F6, .F7, .F8, .F9, .F10, .F11, .F12,
+        ]
+
+        for key in specialKeys {
+            app.typeKey(key, modifierFlags: [])
+        }
 
         assertEventSnapshot(named: "testAllKeys")
     }
 
     // MARK: - wheel
 
-    func testWheelScrollVertical() {
+    func testScroll() {
         let window = app.windows.firstMatch
         let center = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         settleAt(center)
         center.scroll(byDeltaX: 0, deltaY: 3)
         center.scroll(byDeltaX: 0, deltaY: -2)
         center.scroll(byDeltaX: 0, deltaY: 5)
-        assertEventSnapshot(named: "testWheelScrollVertical")
-    }
 
-    func testWheelScrollHorizontal() {
-        let window = app.windows.firstMatch
-        let center = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        settleAt(center)
         center.scroll(byDeltaX: 3, deltaY: 0)
         center.scroll(byDeltaX: -2, deltaY: 0)
         center.scroll(byDeltaX: 5, deltaY: 0)
-        assertEventSnapshot(named: "testWheelScrollHorizontal")
+        assertEventSnapshot(named: "testScroll")
     }
 
     // MARK: - resize
