@@ -11,11 +11,19 @@ for arg in "$@"; do
 	--args | -a) SHOW_ARGS=1 ;;
 	--clean | -c) CLEAN=restore ;;
 	--CLEAN | -C) CLEAN=full ;;
+	--g) ENABLE_DEBUG_SYMBOLS=1 ;;
+	--no-g) ENABLE_DEBUG_SYMBOLS=0 ;;
+	--profile) ENABLE_PROFILE=1 ;;
+	--no-profile) ENABLE_PROFILE=0 ;;
 	--help | -h)
 		echo "$0 [options]"
 		echo "  -a, --args  Display the available args list for the skia build (no build)"
 		echo "  -c, --clean Remove the dist and skia/build directories (no build)"
 		echo "  -C, --CLEAN Remove the dist and skia directories (no build)"
+		echo "  --g         Add -g debug symbols to compile flags"
+		echo "  --no-g      Do not add -g debug symbols (default)"
+		echo "  --profile   Add profiling flags (-fno-omit-frame-pointer, -gline-tables-only)"
+		echo "  --no-profile Do not add profiling flags (default)"
 		echo "  -h, --help This help text"
 		exit 0
 		;;
@@ -122,6 +130,13 @@ COMMON_ARGS=" \
   skia_use_zlib=true \
 "
 
+if [ "$ENABLE_DEBUG_SYMBOLS"x == "1x" ]; then
+	EXTRA_SYMBOL_CFLAG='"-g", '
+fi
+if [ "$ENABLE_PROFILE"x == "1x" ]; then
+	EXTRA_PROFILE_CFLAGS='"-fno-omit-frame-pointer", "-gline-tables-only", '
+fi
+
 BUILD_DIR=${PWD}/skia/build
 DIST=${PWD}/dist
 
@@ -146,9 +161,7 @@ Darwin*)
       skia_use_fontconfig=false \
       skia_use_freetype=false \
       skia_use_x11=false \
-      extra_cflags=[ \
-        \"-Wno-unused-command-line-argument\" \
-      ] \
+      extra_cflags=[ ${EXTRA_PROFILE_CFLAGS}${EXTRA_SYMBOL_CFLAG}\"-Wno-unused-command-line-argument\" ] \
       extra_cflags_cc=[ \
         \"-DHAVE_XLOCALE_H\" \
       ] \
@@ -169,9 +182,7 @@ Linux*)
       skia_use_fontconfig=true \
       skia_use_freetype=true \
       skia_use_x11=true \
-      extra_cflags=[ \
-        \"-Wno-psabi\" \
-      ] \
+      extra_cflags=[ ${EXTRA_PROFILE_CFLAGS}${EXTRA_SYMBOL_CFLAG}\"-Wno-psabi\" ] \
       extra_cflags_cc=[ \
         \"-DHAVE_XLOCALE_H\" \
       ] \
@@ -193,7 +204,7 @@ MINGW*)
       skia_use_freetype=false \
       skia_use_x11=false \
       clang_win=\"C:\\Program Files\\LLVM\" \
-      extra_cflags=[ \
+      extra_cflags=[ ${EXTRA_PROFILE_CFLAGS}${EXTRA_SYMBOL_CFLAG}\
         \"-DSKIA_C_DLL\", \
         \"-UHAVE_NEWLOCALE\", \
         \"-UHAVE_XLOCALE_H\", \
