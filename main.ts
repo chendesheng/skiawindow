@@ -121,7 +121,13 @@ win.addEventListener("render", (e) => {
     fontSize: 24.0 * scale,
     fontFamilies: ["Helvetica Neue"],
   });
-  const ps = new ParagraphStyle({ textStyle: ts });
+  const ps = new ParagraphStyle({
+    textStyle: {
+      color: White,
+      fontSize: 24.0 * scale,
+      fontFamilies: ["Helvetica Neue"],
+    },
+  });
   const builder = new ParagraphBuilder(ps, fontCollection);
   builder.pushStyle(ts);
 

@@ -1,5 +1,6 @@
 import { encodeUtf8, skLib } from "./binding.ts";
 import { TextStyle } from "./TextStyle.ts";
+import type { TextStyleOptions } from "./TextStyle.ts";
 
 const sk = skLib.symbols;
 
@@ -11,7 +12,7 @@ const PARAGRAPH_STYLE_HAS_ELLIPSIS = 1n << 4n;
 const PARAGRAPH_STYLE_HAS_HEIGHT = 1n << 5n;
 
 export interface ParagraphStyleOptions {
-  textStyle?: TextStyle;
+  textStyle?: TextStyleOptions;
   textAlign?: number;
   textDirection?: number;
   maxLines?: number;
@@ -23,6 +24,9 @@ export class ParagraphStyle {
   #ptr: Deno.PointerValue;
 
   constructor(opts?: ParagraphStyleOptions) {
+    const textStyle = opts?.textStyle !== undefined
+      ? new TextStyle(opts.textStyle)
+      : undefined;
     let flags = 0n;
     if (opts?.textStyle !== undefined) flags |= PARAGRAPH_STYLE_HAS_TEXT_STYLE;
     if (opts?.textAlign !== undefined) flags |= PARAGRAPH_STYLE_HAS_TEXT_ALIGN;
@@ -36,16 +40,20 @@ export class ParagraphStyle {
     const ellipsisBytes = opts?.ellipsis !== undefined
       ? encodeUtf8(opts.ellipsis)
       : (new Uint8Array(0) as Uint8Array<ArrayBuffer>);
-    this.#ptr = sk.sk_paragraph_style_new_with_options(
-      flags,
-      opts?.textAlign ?? 0,
-      opts?.textDirection ?? 0,
-      BigInt(opts?.maxLines ?? 0),
-      opts?.heightMultiplier ?? 0,
-      ellipsisBytes,
-      BigInt(ellipsisBytes.length),
-      opts?.textStyle?._ptr ?? null,
-    );
+    try {
+      this.#ptr = sk.sk_paragraph_style_new_with_options(
+        flags,
+        opts?.textAlign ?? 0,
+        opts?.textDirection ?? 0,
+        BigInt(opts?.maxLines ?? 0),
+        opts?.heightMultiplier ?? 0,
+        ellipsisBytes,
+        BigInt(ellipsisBytes.length),
+        textStyle?._ptr ?? null,
+      );
+    } finally {
+      textStyle?.delete();
+    }
   }
 
   get _ptr(): Deno.PointerValue {

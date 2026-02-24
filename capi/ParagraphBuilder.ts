@@ -34,8 +34,18 @@ export class ParagraphBuilder {
     this.#ptr = sk.sk_paragraph_builder_new(style._ptr, fontCollection._ptr);
   }
 
-  pushStyle(style: TextStyle): void {
-    sk.sk_paragraph_builder_push_style(this.#ptr, style._ptr);
+  pushStyle(style: TextStyle | TextStyleOptions): void {
+    if (style instanceof TextStyle) {
+      sk.sk_paragraph_builder_push_style(this.#ptr, style._ptr);
+      return;
+    }
+
+    const textStyle = new TextStyle(style);
+    try {
+      sk.sk_paragraph_builder_push_style(this.#ptr, textStyle._ptr);
+    } finally {
+      textStyle.delete();
+    }
   }
 
   pop(): void {

@@ -1,7 +1,10 @@
 import { assertAlmostEquals, assertEquals } from "jsr:@std/assert";
 import { Black, color4fToColor, createColor4f } from "../capi/Color.ts";
+import { FontCollection } from "../capi/FontCollection.ts";
+import { ParagraphBuilder } from "../capi/ParagraphBuilder.ts";
 import { ParagraphStyle } from "../capi/ParagraphStyle.ts";
 import { TextStyle } from "../capi/TextStyle.ts";
+import { TypefaceFontProvider } from "../capi/TypefaceFontProvider.ts";
 
 Deno.test("TextStyle constructor and property wrappers", () => {
   const style = new TextStyle({
@@ -45,9 +48,8 @@ Deno.test("TextStyle constructor and property wrappers", () => {
 });
 
 Deno.test("ParagraphStyle constructor and property wrappers", () => {
-  const textStyle = new TextStyle({ color: Black, fontSize: 14 });
   const style = new ParagraphStyle({
-    textStyle,
+    textStyle: { color: Black, fontSize: 14 },
     textAlign: 2,
     textDirection: 1,
     maxLines: 3,
@@ -69,5 +71,30 @@ Deno.test("ParagraphStyle constructor and property wrappers", () => {
   assertEquals(style.maxLines, 5);
 
   style.delete();
-  textStyle.delete();
+});
+
+Deno.test("ParagraphBuilder.pushStyle accepts TextStyleOptions", async () => {
+  const fontData = await Deno.readFile("tests/fixtures/Roboto-Regular.ttf");
+  const provider = TypefaceFontProvider.Make();
+  provider.registerFont(fontData, "Roboto");
+  const fontCollection = FontCollection.Make();
+  fontCollection.setDefaultFontManagerPtr(provider.asFontMgr());
+
+  const paragraphStyle = new ParagraphStyle({
+    textStyle: { color: Black, fontSize: 12, fontFamilies: ["Roboto"] },
+  });
+  const builder = new ParagraphBuilder(paragraphStyle, fontCollection);
+  builder.pushStyle({ color: Black, fontSize: 16, fontFamilies: ["Roboto"] });
+  builder.addText("Hello");
+  builder.pop();
+
+  const paragraph = builder.build();
+  paragraph.layout(200);
+  assertEquals(paragraph.getHeight() > 0, true);
+
+  paragraph.delete();
+  builder.delete();
+  paragraphStyle.delete();
+  fontCollection.delete();
+  provider.delete();
 });

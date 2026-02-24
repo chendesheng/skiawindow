@@ -20,7 +20,13 @@ Deno.test("draw paragraph", async (t) => {
       fontSize: 24,
       fontFamilies: ["Roboto"],
     });
-    const ps = new ParagraphStyle({ textStyle: ts });
+    const ps = new ParagraphStyle({
+      textStyle: {
+        color: Black,
+        fontSize: 24,
+        fontFamilies: ["Roboto"],
+      },
+    });
     const builder = new ParagraphBuilder(ps, fontCollection);
     builder.pushStyle(ts);
     builder.addText("Hello, Skia!");
