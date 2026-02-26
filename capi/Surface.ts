@@ -7,6 +7,7 @@ import {
 } from "./binding.ts";
 import { Canvas } from "./Canvas.ts";
 import type { GrDirectContext } from "./GrDirectContext.ts";
+import { Image } from "./Image.ts";
 
 const sk = skLib.symbols;
 
@@ -58,10 +59,10 @@ export class Surface {
     return new Canvas(ptr);
   }
 
-  makeImageSnapshot(): Deno.PointerValue {
+  makeImageSnapshot(): Image {
     const img = sk.sk_surface_make_image_snapshot(this.#ptr);
     if (!img) throw new Error("Failed to make image snapshot");
-    return img;
+    return new Image(img);
   }
 
   /**
@@ -71,7 +72,7 @@ export class Surface {
   encodePNG(compressionLevel: number = 6): Uint8Array {
     const img = this.makeImageSnapshot();
     try {
-      const data = sk.sk_encode_png(null, img, compressionLevel);
+      const data = sk.sk_encode_png(null, img._ptr, compressionLevel);
       if (!data) throw new Error("Failed to encode PNG");
       try {
         const size = Number(sk.sk_data_get_size(data));
@@ -84,7 +85,7 @@ export class Surface {
         sk.sk_data_unref(data);
       }
     } finally {
-      sk.sk_image_unref(img);
+      img.delete();
     }
   }
 

@@ -323,6 +323,7 @@ public func windowShow(_ win: UnsafeMutableRawPointer?) {
     s.window.makeKeyAndOrderFront(nil)
     s.window.makeFirstResponder(s.metalView)
     NSApp.activate(ignoringOtherApps: true)
+    s.metalView.isPaused = false
 }
 
 @_cdecl("window_run")
@@ -420,7 +421,8 @@ public func windowGetNextDrawableTexture(_ win: UnsafeMutableRawPointer?)
     guard let win else { return nil }
     let state = stateFrom(win)
 
-    guard let drawable = state.currentDrawable else { return nil }
+    guard let drawable = state.metalView.getNextDrawable() else { return nil }
+    state.currentDrawable = drawable
 
     if state.preserveDrawingBuffer {
         let drawableTexture = drawable.texture
@@ -474,6 +476,7 @@ public func windowPresentDrawable(_ win: UnsafeMutableRawPointer?) {
     let queue = AppState.shared.commandQueue
 
     guard let cmd = queue.makeCommandBuffer() else {
+        state.currentDrawable = nil
         return
     }
 
@@ -495,6 +498,7 @@ public func windowPresentDrawable(_ win: UnsafeMutableRawPointer?) {
 
     cmd.present(drawable)
     cmd.commit()
+    state.currentDrawable = nil
     if (state.inLiveResize) {
         cmd.waitUntilCompleted()
     }
@@ -712,12 +716,4 @@ public func appClipboardReadText(
         buf[i] = bytes[i]
     }
     return bytes.count
-}
-
-@_cdecl("window_set_needs_display")
-public func windowSetNeedsDisplay(_ win: UnsafeMutableRawPointer?, _ x: CGFloat, _ y: CGFloat, _ width: CGFloat, _ height: CGFloat) {
-    guard let win else { return }
-    let state = stateFrom(win)
-    print("setNeedsDisplay: \(x), \(y), \(width), \(height)")
-    state.metalView.setNeedsDisplay(NSRect(x: x, y: y, width: width, height: height))
 }
