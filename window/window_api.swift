@@ -466,6 +466,7 @@ public func windowGetNextDrawableTexture(_ win: UnsafeMutableRawPointer?)
             }
             cmd.commit()
         }
+        state.offscreenTexture = nil
         return Unmanaged.passUnretained(drawable.texture as AnyObject).toOpaque()
     }
 }
@@ -501,6 +502,9 @@ public func windowPresentDrawable(_ win: UnsafeMutableRawPointer?) {
     cmd.present(drawable)
     cmd.commit()
     state.currentDrawable = nil
+    if (state.inLiveResize) {
+        cmd.waitUntilCompleted()
+    }
 }
 
 @_cdecl("window_get_scale")
