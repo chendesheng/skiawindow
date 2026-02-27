@@ -434,42 +434,31 @@ public func windowGetNextDrawableTexture(_ win: UnsafeMutableRawPointer?)
         let w = drawableTexture.width
         let h = drawableTexture.height
 
+        // size not changed
         if let existing = state.offscreenTexture,
             existing.width == w, existing.height == h
         {
-            return Unmanaged.passUnretained(existing as AnyObject).toOpaque()
+            return existing.toOpaque()
         }
 
-        let desc = MTLTextureDescriptor.texture2DDescriptor(
-            pixelFormat: .bgra8Unorm,
-            width: w,
-            height: h,
-            mipmapped: false
-        )
-        desc.usage = [.renderTarget, .shaderRead]
-        desc.storageMode = .private
-        guard let tex = AppState.shared.metalDevice.makeTexture(descriptor: desc) else {
-            return Unmanaged.passUnretained(drawableTexture as AnyObject).toOpaque()
-        }
-        state.offscreenTexture = tex
-        return Unmanaged.passUnretained(tex as AnyObject).toOpaque()
+        // size changed
+        if let tex = createOffscreenTexture(w, h) {
+            state.offscreenTexture = tex
+            return tex.toOpaque()
+        } 
+
+        // size changed and failed to create offscreen texture
+        return drawableTexture.toOpaque()
     } else {
         // Clear the drawable to match WebGL's preserveDrawingBuffer:false behavior
         // (drawable textures retain content from their last use in Metal's swapchain pool)
         let queue = AppState.shared.commandQueue
         if let cmd = queue.makeCommandBuffer() {
-            let rpd = MTLRenderPassDescriptor()
-            rpd.colorAttachments[0].texture = drawable.texture
-            rpd.colorAttachments[0].loadAction = .clear
-            rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
-            rpd.colorAttachments[0].storeAction = .store
-            if let encoder = cmd.makeRenderCommandEncoder(descriptor: rpd) {
-                encoder.endEncoding()
-            }
+            cmd.clearTexture(drawable.texture)
             cmd.commit()
         }
         state.offscreenTexture = nil
-        return Unmanaged.passUnretained(drawable.texture as AnyObject).toOpaque()
+        return drawable.texture.toOpaque()
     }
 }
 
@@ -485,26 +474,30 @@ public func windowPresentDrawable(_ win: UnsafeMutableRawPointer?) {
     }
 
     if state.preserveDrawingBuffer, let offscreen = state.offscreenTexture {
-        let blit = cmd.makeBlitCommandEncoder()!
-        let w = min(offscreen.width, drawable.texture.width)
-        let h = min(offscreen.height, drawable.texture.height)
-        blit.copy(
-            from: offscreen,
-            sourceSlice: 0, sourceLevel: 0,
-            sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
-            sourceSize: MTLSize(width: w, height: h, depth: 1),
-            to: drawable.texture,
-            destinationSlice: 0, destinationLevel: 0,
-            destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0)
-        )
-        blit.endEncoding()
+        cmd.blitCopy(offscreen, drawable.texture)
     }
 
-    cmd.present(drawable)
-    cmd.commit()
     if (state.inLiveResize) {
+        // this improves resize jittering
+        cmd.commit()
         cmd.waitUntilCompleted()
+        drawable.present()
+    } else {
+        cmd.present(drawable)
+        cmd.commit()
     }
+}
+
+func createOffscreenTexture(_ width: Int, _ height: Int) -> MTLTexture? {
+    let desc = MTLTextureDescriptor.texture2DDescriptor(
+        pixelFormat: .bgra8Unorm,
+        width: width,
+        height: height,
+        mipmapped: false
+    )
+    desc.usage = [.renderTarget, .shaderRead]
+    desc.storageMode = .private
+    return AppState.shared.metalDevice.makeTexture(descriptor: desc)!
 }
 
 @_cdecl("window_get_scale")
@@ -726,4 +719,43 @@ public func windowSetNeedsDisplay(_ win: UnsafeMutableRawPointer?) {
     guard let win else { return }
     let state = stateFrom(win)
     state.metalView.setNeedsDisplay(state.metalView.bounds)
+}
+
+func performanceNow() -> Double {
+    return Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000
+}
+
+extension MTLTexture {
+    func toOpaque() -> UnsafeMutableRawPointer {
+        return Unmanaged.passUnretained(self as AnyObject).toOpaque()
+    }
+}
+
+extension MTLCommandBuffer {
+    func clearTexture(_ texture: MTLTexture) {
+        let rpd = MTLRenderPassDescriptor()
+        rpd.colorAttachments[0].texture = texture
+        rpd.colorAttachments[0].loadAction = .clear
+        rpd.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        rpd.colorAttachments[0].storeAction = .store
+        if let encoder = makeRenderCommandEncoder(descriptor: rpd) {
+            encoder.endEncoding()
+        }
+    }
+
+    func blitCopy(_ from: MTLTexture, _ to: MTLTexture) {
+        let blit = makeBlitCommandEncoder()!
+        let width = min(from.width, to.width)
+        let height = min(from.height, to.height)
+        blit.copy(
+            from: from,
+            sourceSlice: 0, sourceLevel: 0,
+            sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+            sourceSize: MTLSize(width: width, height: height, depth: 1),
+            to: to,
+            destinationSlice: 0, destinationLevel: 0,
+            destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0)
+        )
+        blit.endEncoding()
+    }
 }

@@ -23,13 +23,20 @@ final class MetalView: MTKView, MTKViewDelegate {
     // MARK: Rendering
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
-        setNeedsDisplay(bounds) 
+        if (self.inLiveResize) {
+            print("[\(performanceNow())] mtkView: \(size)")
+        }
     }
 
     func draw(in view: MTKView) {
-        let sz = drawableSize
-        let scale = window?.backingScaleFactor ?? 1.0
-        state.onRender?(Int32(sz.width), Int32(sz.height), Double(scale))
+        if let drawable = currentDrawable {
+            let scale = window?.backingScaleFactor ?? 1.0
+            if (inLiveResize) {
+                print("[\(performanceNow())] draw \(drawable.texture.width) \(drawable.texture.height)")
+            }
+            state.onRender?(
+                Int32(drawable.texture.width), Int32(drawable.texture.height), Double(scale))
+        }
     }
 
 
@@ -115,8 +122,28 @@ final class MetalView: MTKView, MTKViewDelegate {
 
     // MARK: Resize
 
+    override func viewWillStartLiveResize() {
+        print("[\(performanceNow())] viewWillStartLiveResize")
+        // this improves resize jittering
+        (layer as? CAMetalLayer)?.presentsWithTransaction = true
+    }
+
+    override func viewDidEndLiveResize() {
+        print("[\(performanceNow())] viewDidEndLiveResize")
+
+        (layer as? CAMetalLayer)?.presentsWithTransaction = false
+    }
+
+    func performanceNow() -> Double {
+        return Double(DispatchTime.now().uptimeNanoseconds) / 1_000_000
+    }
+
     override func setFrameSize(_ newSize: NSSize) {
+        print("[\(performanceNow())] setFrameSize: \(newSize)")
+
         super.setFrameSize(newSize)
-        if window != nil { state.onWindowResize?(Int32(bounds.width), Int32(bounds.height)) }
+        if let state = state {
+            state.onWindowResize?(Int32(newSize.width), Int32(newSize.height))
+        }
     }
 }
