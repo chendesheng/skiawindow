@@ -7,37 +7,31 @@ import MetalKit
 
 // MARK: - MetalView
 
-final class MetalView: MTKView {
+final class MetalView: MTKView, MTKViewDelegate {
 
     unowned var state: WindowState!
 
     init(frame: NSRect, device: MTLDevice) {
         super.init(frame: frame, device: device)
         isPaused = true
-        enableSetNeedsDisplay = false
+        enableSetNeedsDisplay = true
+        delegate = self
     }
 
     required init(coder: NSCoder) { fatalError() }
 
     // MARK: Rendering
 
-    override func draw(_ dirtyRect: NSRect) {
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        setNeedsDisplay(bounds) 
+    }
+
+    func draw(in view: MTKView) {
         let sz = drawableSize
         let scale = window?.backingScaleFactor ?? 1.0
         state.onRender?(Int32(sz.width), Int32(sz.height), Double(scale))
     }
 
-    /// Acquires the next drawable, or nil if the layer size is invalid.
-    func getNextDrawable() -> UnsafeMutableRawPointer? {
-        let sz = drawableSize
-        let w = Int32(sz.width)
-        let h = Int32(sz.height)
-        guard w > 0, h > 0 else { return nil }
-
-        guard let metalLayer = self.layer as? CAMetalLayer,
-              let drawable = metalLayer.nextDrawable() else { return nil }
-        return Unmanaged.passRetained(drawable as AnyObject).toOpaque()
-    }
 
     // MARK: First responder
 

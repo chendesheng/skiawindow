@@ -337,6 +337,10 @@ export class Window extends EventTarget {
     winLib.symbols.window_set_zoom_button_visible(this.#ptr, v);
   }
 
+  setNeedsDisplay(x: number, y: number, width: number, height: number): void {
+    winLib.symbols.window_set_needs_display(this.#ptr, x, y, width, height);
+  }
+
   getCursor(): string {
     const id = winLib.symbols.window_get_cursor(this.#ptr) as number;
     return CURSOR_ID_TO_NAME[id] ?? "default";

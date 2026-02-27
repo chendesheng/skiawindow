@@ -68,7 +68,9 @@ final class WindowState: NSObject, NSWindowDelegate {
 
     var preserveDrawingBuffer: Bool = false
     var offscreenTexture: MTLTexture? = nil
-    var currentDrawable: CAMetalDrawable? = nil
+    var currentDrawable: CAMetalDrawable? {
+        self.metalView.currentDrawable
+    }
     var inLiveResize: Bool { self.metalView.inLiveResize }
 
     init(window: NSWindow, metalView: MetalView) {

@@ -32,11 +32,12 @@ export class Application {
     return this._running;
   }
 
-  async run(): Promise<void> {
+  async run(yieldFn?: () => Promise<void>): Promise<void> {
     this._running = true;
     while (this._running) {
       winLib.symbols.app_poll_events(1.0 / 60.0);
-      await new Promise<void>((r) => setTimeout(r, 0));
+      if (yieldFn) await yieldFn();
+      else await new Promise<void>((r) => setTimeout(r, 0));
     }
   }
 
