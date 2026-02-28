@@ -337,8 +337,8 @@ export class Window extends EventTarget {
     winLib.symbols.window_set_zoom_button_visible(this.#ptr, v);
   }
 
-  setNeedsDisplay(x: number, y: number, width: number, height: number): void {
-    winLib.symbols.window_set_needs_display(this.#ptr, x, y, width, height);
+  setNeedsDisplay(): void {
+    winLib.symbols.window_set_needs_display(this.#ptr);
   }
 
   getCursor(): string {
