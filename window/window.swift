@@ -7,15 +7,17 @@
 
 import Cocoa
 import MetalKit
+import QuartzCore
 
 // MARK: - Callback typedefs
 
-public typealias MouseCallback    = @convention(c) (UInt32, Int32, Double, Double, Int32, UInt32) -> Void
-public typealias KeyCallback      = @convention(c) (UInt32, UInt16, UInt8, Int32, UInt32) -> Void
-public typealias VoidCallback     = @convention(c) () -> Void
-public typealias ResizeCallback   = @convention(c) (Int32, Int32) -> Void
-public typealias RenderCallback   = @convention(c) (Int32, Int32, Double) -> Void
-public typealias WheelCallback    = @convention(c) (UInt32, Int32, Double, Double, Double, Double) -> Void
+public typealias MouseCallback         = @convention(c) (UInt32, Int32, Double, Double, Int32, UInt32) -> Void
+public typealias KeyCallback           = @convention(c) (UInt32, UInt16, UInt8, Int32, UInt32) -> Void
+public typealias VoidCallback          = @convention(c) () -> Void
+public typealias ResizeCallback        = @convention(c) (Int32, Int32) -> Void
+public typealias RenderCallback        = @convention(c) (Int32, Int32, Double) -> Void
+public typealias WheelCallback         = @convention(c) (UInt32, Int32, Double, Double, Double, Double) -> Void
+public typealias AnimationFrameCallback = @convention(c) (Double) -> Void
 
 // MARK: - AppState (singleton — NSApplicationDelegate + shared Metal resources)
 
@@ -66,6 +68,24 @@ final class WindowState: NSObject, NSWindowDelegate {
 
     var cursor: NSCursor = .arrow
 
+    var onAnimationFrame: AnimationFrameCallback?
+    var displayLink: CADisplayLink?
+
+    func setAnimationFrameCallback(_ cb: AnimationFrameCallback?) {
+        displayLink?.invalidate()
+        displayLink = nil
+        onAnimationFrame = cb
+        if cb != nil {
+            let link = metalView.displayLink(target: self, selector: #selector(handleAnimationFrame(_:)))
+            link.add(to: RunLoop.main, forMode: .common)
+            displayLink = link
+        }
+    }
+
+    @objc func handleAnimationFrame(_ link: CADisplayLink) {
+        onAnimationFrame?(CACurrentMediaTime() * 1000.0)
+    }
+
     var preserveDrawingBuffer: Bool = false
     var offscreenTexture: MTLTexture? = nil
     var currentDrawable: CAMetalDrawable? {
@@ -81,6 +101,7 @@ final class WindowState: NSObject, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        setAnimationFrameCallback(nil)
         metalView.isPaused = true
         onWindowClose?()
     }

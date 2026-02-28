@@ -151,6 +151,10 @@ export const winLib = Deno.dlopen(libPath, {
     parameters: ["pointer", "pointer"],
     result: "void",
   },
+  window_set_on_animation_frame: {
+    parameters: ["pointer", "pointer"],
+    result: "void",
+  },
 
   // --- Frame ---
 
@@ -447,6 +451,11 @@ const RENDER_CB_DEF = {
 
 const WHEEL_CB_DEF = {
   parameters: ["u32", "i32", "f64", "f64", "f64", "f64"],
+  result: "void",
+} as const;
+
+export const ANIMATION_FRAME_CB_DEF = {
+  parameters: ["f64"],
   result: "void",
 } as const;
 

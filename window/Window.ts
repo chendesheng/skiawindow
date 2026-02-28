@@ -5,6 +5,7 @@
 export { Application } from "./Application.ts";
 
 import {
+  ANIMATION_FRAME_CB_DEF,
   createWindow,
   getWindowTitle,
   Modifiers,
@@ -123,6 +124,12 @@ export class Window extends EventTarget {
   #ptr: Deno.PointerValue;
   // deno-lint-ignore no-explicit-any
   #callbacks: any[] = [];
+
+  #rafPending = new Map<number, (time: number) => void>();
+  #rafNextId = 1;
+  #rafNativeCb: Deno.UnsafeCallback<typeof ANIMATION_FRAME_CB_DEF> | null =
+    null;
+  #rafActive = false;
 
   constructor(width: number, height: number, title: string) {
     super();
@@ -258,6 +265,61 @@ export class Window extends EventTarget {
     );
   }
 
+  // --- Animation frame ---
+
+  requestAnimationFrame(callback: (time: number) => void): number {
+    const id = this.#rafNextId++;
+    this.#rafPending.set(id, callback);
+
+    if (!this.#rafActive) {
+      this.#startAnimationTimer();
+    }
+
+    return id;
+  }
+
+  cancelAnimationFrame(id: number): void {
+    this.#rafPending.delete(id);
+
+    if (this.#rafPending.size === 0 && this.#rafActive) {
+      this.#stopAnimationTimer();
+    }
+  }
+
+  #startAnimationTimer(): void {
+    if (this.#rafActive) return;
+
+    if (!this.#rafNativeCb) {
+      this.#rafNativeCb = new Deno.UnsafeCallback(
+        ANIMATION_FRAME_CB_DEF,
+        (timestampMs: number) => {
+          const batch = new Map(this.#rafPending);
+          this.#rafPending.clear();
+
+          for (const [, cb] of batch) {
+            cb(timestampMs);
+          }
+
+          if (this.#rafPending.size === 0) {
+            this.#stopAnimationTimer();
+          }
+        },
+      );
+    }
+
+    winLib.symbols.window_set_on_animation_frame(
+      this.#ptr,
+      this.#rafNativeCb.pointer,
+    );
+    this.#rafActive = true;
+  }
+
+  #stopAnimationTimer(): void {
+    if (!this.#rafActive) return;
+    winLib.symbols.window_set_on_animation_frame(this.#ptr, null);
+    this.#rafActive = false;
+  }
+
   // --- Lifecycle ---
 
   show(): void {
@@ -265,6 +327,13 @@ export class Window extends EventTarget {
   }
 
   dispose(): void {
+    this.#stopAnimationTimer();
+    if (this.#rafNativeCb) {
+      this.#rafNativeCb.close();
+      this.#rafNativeCb = null;
+    }
+    this.#rafPending.clear();
+
     for (const cb of this.#callbacks) {
       cb.close();
     }
