@@ -429,8 +429,8 @@ public func windowGetNextDrawableTexture(_ win: UnsafeMutableRawPointer?)
 
     guard let drawable = state.currentDrawable else { return nil }
 
+    let drawableTexture = drawable.texture
     if state.preserveDrawingBuffer {
-        let drawableTexture = drawable.texture
         let w = drawableTexture.width
         let h = drawableTexture.height
 
@@ -454,11 +454,11 @@ public func windowGetNextDrawableTexture(_ win: UnsafeMutableRawPointer?)
         // (drawable textures retain content from their last use in Metal's swapchain pool)
         let queue = AppState.shared.commandQueue
         if let cmd = queue.makeCommandBuffer() {
-            cmd.clearTexture(drawable.texture)
+            cmd.clearTexture(drawableTexture)
             cmd.commit()
         }
         state.offscreenTexture = nil
-        return drawable.texture.toOpaque()
+        return drawableTexture.toOpaque()
     }
 }
 
@@ -473,7 +473,7 @@ public func windowPresentDrawable(_ win: UnsafeMutableRawPointer?) {
         return
     }
 
-    if state.preserveDrawingBuffer, let offscreen = state.offscreenTexture {
+    if let offscreen = state.offscreenTexture {
         cmd.blitCopy(offscreen, drawable.texture)
     }
 
